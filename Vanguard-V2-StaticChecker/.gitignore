@@ -1,0 +1,16 @@
+.idea/
+cmake-build-debug/
+build/
+CMakeCache.txt
+cmake.check_cache
+cmake-build-debug/
+CMakeFiles/
+*.cmake
+compile_commands.json
+rules.ninja
+build.ninja
+.vscode/
+*.a
+.ninja_deps
+.ninja_log
+tools/TemplateChecker/TemplateChecker

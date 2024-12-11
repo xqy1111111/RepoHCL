@@ -1,0 +1,26 @@
+FROM ubuntu:20.04
+
+# 使用阿里云的 Ubuntu 镜像源
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirrors.aliyun.com/ubuntu/|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com/ubuntu/|http://mirrors.aliyun.com/ubuntu/|g' /etc/apt/sources.list
+
+# 设置默认时区，后面按照依赖包安装时会用到
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo "Asia/Shanghai" > /etc/timezone
+
+RUN apt-get update
+
+RUN apt-get install -y build-essential llvm-9-dev cmake ninja-build clang-9 libclang-9-dev zlib1g-dev wget bear
+
+RUN apt-get install -y python3-dev python-dev python3-pip
+
+WORKDIR /root/fa
+
+COPY . .
+
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple & pip install -r requirements.txt
+
+ENV CC=clang-9
+ENV CXX=clang++-9
+
+RUN python3 main.py
+
