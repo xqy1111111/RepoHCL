@@ -1,5 +1,6 @@
-from enum import StrEnum
-from typing import Optional
+from dataclasses import field
+from enum import Enum
+from typing import Optional, List
 
 from iso639 import Language, LanguageNotFoundError
 from pydantic import (
@@ -12,8 +13,22 @@ from pydantic import (
     field_validator,
 )
 from pydantic_settings import BaseSettings
-from pathlib import Path
 
+
+# 兼容python3.8
+class StrEnum(str, Enum):
+    def __new__(cls, *values):
+        if len(values) > 1:
+            member = str.__new__(cls, values[0])
+        else:
+            member = str.__new__(cls, values[0])
+        return member
+
+    def __str__(self):
+        return self.value
+
+
+# 使用 StrEnum 创建具体的枚举类
 
 class LogLevel(StrEnum):
     DEBUG = "DEBUG"
@@ -27,7 +42,7 @@ class ProjectSettings(BaseSettings):
     target_repo: DirectoryPath = ""  # type: ignore
     hierarchy_name: str = ".project_doc_record"
     markdown_docs_name: str = "markdown_docs"
-    ignore_list: list[str] = []
+    ignore_list: List[str] = field(default_factory=list)
     language: str = 'English'
     max_thread_count: PositiveInt = 4
     log_level: LogLevel = LogLevel.INFO
@@ -71,8 +86,8 @@ class ChatCompletionSettings(BaseSettings):
 
 
 class Setting(BaseSettings):
-    project: ProjectSettings = {}  # type: ignore
-    chat_completion: ChatCompletionSettings = {}  # type: ignore
+    project: ProjectSettings = field(default_factory=dict)  # type: ignore
+    chat_completion: ChatCompletionSettings = field(default_factory=dict)  # type: ignore
 
 
 class SettingsManager:
@@ -89,10 +104,10 @@ class SettingsManager:
     @classmethod
     def initialize_with_params(
             cls,
-            target_repo: Path,
+            target_repo: str,
             markdown_docs_name: str,
             hierarchy_name: str,
-            ignore_list: list[str],
+            ignore_list: List[str],
             language: str,
             max_thread_count: int,
             log_level: str,

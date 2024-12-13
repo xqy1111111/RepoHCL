@@ -10,6 +10,7 @@ docker run -td cg_libxml bash
 container_id=$(docker ps | grep 'cg_libxml' | awk '{print $1}')
 docker cp ${container_id}:/root/output/cg.dot ../output/
 docker cp ${container_id}:/root/output/functions.json ../output/
+docker cp ${container_id}:/root/vanguard/cmake-build-debug/tools/CallGraphGen/cge ../lib/
 docker stop ${container_id}
 
 #docker build --no-cache -f docker/dockerfile.cg_vanguard -t cg_vanguard .

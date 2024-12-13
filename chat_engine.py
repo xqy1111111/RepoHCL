@@ -1,11 +1,8 @@
 import os
 
-from openai import OpenAI
-
+from doc import DocItem, FunctionItem
 from llm_helper import SimpleLLM
 from project_manager import ProjectManager
-from doc import DocItem, FunctionItem
-from loguru import logger
 from prompt import doc_generation_instruction, documentation_guideline
 from settings import SettingsManager
 
@@ -16,14 +13,12 @@ class ChatEngine:
     """
 
     def __init__(self, manager: ProjectManager):
-        self.setting = SettingsManager.get_setting()
+        self._setting = SettingsManager.get_setting()
         self.project = manager
-        self._llm = SimpleLLM(self.setting)
+        self._llm = SimpleLLM(self._setting)
 
     def build_prompt(self, doc_item: DocItem):
         """Builds and returns the system and user prompts based on the DocItem."""
-        setting = SettingsManager.get_setting()
-
         referenced = len(doc_item.who_reference_me) > 0
 
         code_type = doc_item.code_type
@@ -37,11 +32,11 @@ class ChatEngine:
             if len(doc_item.reference_who) == 0:
                 return ""
             prompt = [
-                """As you can see, the code calls the following objects, their code and docs are as following:"""
+                """As you can see, the code calls the following objects, their docs and code are as following:"""
             ]
             for reference_item in doc_item.reference_who:
                 instance_prompt = (
-                        f"""obj: {reference_item.name}\nDocument: \n{reference_item.md_content[-1] if len(reference_item.md_content) > 0 else 'None'}\nRaw code:```\n{reference_item.code}\n```"""
+                        f"""obj: {reference_item.name}\nDocument: \n{reference_item.md_content}\n"""
                         + "=" * 10
                 )
                 prompt.append(instance_prompt)
@@ -55,7 +50,7 @@ class ChatEngine:
             ]
             for referencer_item in doc_item.who_reference_me:
                 instance_prompt = (
-                        f"""obj: {referencer_item.name}\nDocument: \n{referencer_item.md_content[-1] if len(referencer_item.md_content) > 0 else 'None'}\nRaw code:```\n{referencer_item.code}\n```"""
+                        f"""obj: {referencer_item.name}\nDocument: \n{referencer_item.md_content}\n"""
                         + "=" * 10
                 )
                 prompt.append(instance_prompt)
@@ -107,7 +102,7 @@ class ChatEngine:
             reference_letter=reference_letter,
             referencer_content=referencer_content,
             parameters_or_attribute=parameters_or_attribute,
-            language=setting.project.language,
+            language=self._setting.project.language,
         )
 
         # debug
@@ -122,7 +117,7 @@ class ChatEngine:
             {
                 'role': 'user',
                 'content': documentation_guideline.format(
-                    language=setting.project.language)
+                    language=self._setting.project.language)
             }
         ]
 

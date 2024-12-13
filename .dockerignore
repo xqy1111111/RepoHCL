@@ -1,7 +1,7 @@
 venv
 docker
 .idea
-Vanguard-V2-StaticChecker
 output
 docs
 __pycache__
+resource
