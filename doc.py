@@ -26,29 +26,46 @@ class DocItem:
     who_reference_me: List[DocItem] = field(default_factory=list)
 
     def imports(self, path: str):
-        f = f'{path}/{self.file}/{self.name}.md'
+        f = f'{path}/{self.file}.md'
         if not os.path.exists(f):
             return False
         with open(f, 'r') as t:
-            self.md_content = t.read()
-        return True
+            ok = False
+            for line in t:
+                # 检查是否是当前函数
+                if line.startswith('### '):
+                    # 当前函数已经处理完，结束处理
+                    if ok:
+                        return True
+                    # 是当前函数
+                    if line[4:].strip('* \n\r') == self.name:
+                        ok = True
+                        continue
+                    ok = False
+                if ok:
+                    self.md_content += line
+        return len(self.md_content) > 0
 
     def exports(self, path: str):
-        p = f'{path}/{self.file}'
-        f = f'{p}/{self.name}.md'
+        f = f'{path}/{self.file}.md'
         if os.path.exists(f):
             return
-        if not os.path.exists(p):
-            os.makedirs(path)
-        with open(f, 'w') as t:
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        # 追加到最后
+        with open(f, 'a') as t:
             t.write(self.md_content)
 
 
 @dataclass
 class FunctionItem(DocItem):
     code_type = 'Function'
-    parameters: List[str] = field(default_factory=list)
-    has_return: bool = False
+
+    # parameters: List[str] = field(default_factory=list)
+    def has_return(self) -> bool:
+        return 'return' in self.code
+
+    def has_arg(self) -> bool:
+        return self.file.find(' ') != -1
 
 
 @dataclass

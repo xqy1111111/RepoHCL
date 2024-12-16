@@ -67,12 +67,19 @@ class ChatEngine:
                 return ""
 
         code_type_tell = "Class" if code_type == "ClassDef" else "Function"
-        parameters_or_attribute = (
-            "attributes" if code_type == "ClassDef" else "parameters"
-        )
+
+        parameters_or_attribute = "attribute" if code_type == "ClassDef" else "parameter"
+        parameters_note = (
+            f"### {parameters_or_attribute}s\n"
+            f"The {parameters_or_attribute} of this {code_type_tell}.\n"
+            f"The {parameters_or_attribute} of this {code_type_tell}.\n"
+            f"- {code_type_tell}1: XXX\n"
+            f"- {code_type_tell}2: XXX\n"
+            "- ...\n"
+        ) if isinstance(doc_item, FunctionItem) and doc_item.has_arg() else ''
         have_return_tell = (
             "**Output Example**: Mock up a possible appearance of the code's return value."
-            if isinstance(doc_item, FunctionItem) and doc_item.has_return
+            if isinstance(doc_item, FunctionItem) and doc_item.has_return()
             else ""
         )
         combine_ref_situation = (
@@ -101,16 +108,16 @@ class ChatEngine:
             has_relationship=has_relationship,
             reference_letter=reference_letter,
             referencer_content=referencer_content,
-            parameters_or_attribute=parameters_or_attribute,
+            parameters_note=parameters_note,
             language=self._setting.project.language,
         )
 
         # debug
-        d = f'docs/{doc_item.file}'
-        if not os.path.exists(d):
-            os.makedirs(d)
-        with open(f'{d}/{doc_item.name}.prompt', 'w') as f:
-            f.write(system_prompt)
+        f = f'docs/{doc_item.file}.prompt.md'
+        os.makedirs(os.path.dirname(f))
+        with open(f, 'a') as c:
+            c.write(f'''###{doc_item.name}
+                     {system_prompt}''')
 
         return [
             {'role': 'system', 'content': system_prompt},
