@@ -1,0 +1,23 @@
+FROM cg
+
+WORKDIR /root
+
+ENV CC=clang-9
+ENV CXX=clang++-9
+
+RUN apt-get install -y python3-dev python-dev unzip
+
+RUN wget https://github.com/leethomason/tinyxml2/archive/refs/heads/master.zip && unzip master.zip && mv tinyxml2-master tinyxml2
+
+WORKDIR /root/tinyxml2
+
+RUN cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_PREFIX=/lib/llvm-9 .
+
+RUN bear make -j`nproc`
+RUN cp ~/vanguard/benchmark/genastcmd.py .
+RUN python3 genastcmd.py
+RUN chmod +x buildast.sh
+RUN ./buildast.sh | tee buildast.log
+
+WORKDIR /root/output
+RUN ~/vanguard/cmake-build-debug/tools/CallGraphGen/cge /root/tinyxml2/astList.txt

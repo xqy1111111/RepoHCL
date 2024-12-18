@@ -6,6 +6,7 @@ from project_manager import ProjectManager
 from prompt import doc_generation_instruction, documentation_guideline
 from settings import SettingsManager
 
+# openai.BadRequestError: Error code: 400 - {'error': {'code': 'invalid_parameter_error', 'param': None, 'message': '<400> InternalError.Algo.InvalidParameter: Range of input length should be [1, 129024]', 'type': 'invalid_request_error'}, 'id': 'chatcmpl-dea2e488-fd87-9d46-91d7-ba10095f5270', 'request_id': 'dea2e488-fd87-9d46-91d7-ba10095f5270'}
 
 class ChatEngine:
     """
@@ -31,30 +32,20 @@ class ChatEngine:
         def get_referenced_prompt(doc_item: DocItem) -> str:
             if len(doc_item.reference_who) == 0:
                 return ""
-            prompt = [
-                """As you can see, the code calls the following objects, their docs and code are as following:"""
-            ]
+            prompt = 'As you can see, the code calls the following objects, their docs and code are as following:\n\n'
             for reference_item in doc_item.reference_who:
-                instance_prompt = (
-                        f"""obj: {reference_item.name}\nDocument: \n{reference_item.md_content}\n"""
-                        + "=" * 10
-                )
-                prompt.append(instance_prompt)
-            return "\n".join(prompt)
+                prompt += f'**Obj**: {reference_item.name}\n\n' + '**Document**:\n\n' + '\n'.join(
+                    list(map(lambda t: '> ' + t, reference_item.md_content.split('\n')))) + '\n---\n'
+            return prompt
 
         def get_referencer_prompt(doc_item: DocItem) -> str:
             if len(doc_item.who_reference_me) == 0:
                 return ""
-            prompt = [
-                """Also, the code has been called by the following objects, their code and docs are as following:"""
-            ]
+            prompt = 'Also, the code has been called by the following objects, their code and docs are as following:\n'
             for referencer_item in doc_item.who_reference_me:
-                instance_prompt = (
-                        f"""obj: {referencer_item.name}\nDocument: \n{referencer_item.md_content}\n"""
-                        + "=" * 10
-                )
-                prompt.append(instance_prompt)
-            return "\n".join(prompt)
+                prompt += f'**Obj**: {referencer_item.name}\n' + '**Document**:\n' + '\n'.join(
+                    list(map(lambda t: '> ' + t, referencer_item.md_content.split('\n')))) + '\n---\n'
+            return prompt
 
         def get_relationship_description(referencer_content, reference_letter):
             if referencer_content and reference_letter:
@@ -68,19 +59,23 @@ class ChatEngine:
 
         code_type_tell = "Class" if code_type == "ClassDef" else "Function"
 
-        parameters_or_attribute = "attribute" if code_type == "ClassDef" else "parameter"
+        parameters_or_attribute = "attribute" if code_type == "ClassDef" else "Parameter"
         parameters_note = (
-            f"### {parameters_or_attribute}s\n"
-            f"The {parameters_or_attribute} of this {code_type_tell}.\n"
-            f"The {parameters_or_attribute} of this {code_type_tell}.\n"
-            f"- {code_type_tell}1: XXX\n"
-            f"- {code_type_tell}2: XXX\n"
-            "- ...\n"
-        ) if isinstance(doc_item, FunctionItem) and doc_item.has_arg() else ''
+            f"**{parameters_or_attribute}**\n"
+            f"> The {parameters_or_attribute} of this {code_type_tell}.\n"
+            f"> The {parameters_or_attribute} of this {code_type_tell}.\n"
+            f"> - {code_type_tell}1: XXX\n"
+            f"> - {code_type_tell}2: XXX\n"
+            "> - ...\n>\n"
+        ) if isinstance(doc_item, FunctionItem) and doc_item.has_arg else ''
         have_return_tell = (
-            "**Output Example**: Mock up a possible appearance of the code's return value."
-            if isinstance(doc_item, FunctionItem) and doc_item.has_return()
-            else ""
+            "> **Output Example**: \n"
+            "> ```\n"
+            "> (mock possible usage examples of this function with codes.)"
+            "> ```"
+            "\n>\n"
+            if isinstance(doc_item, FunctionItem) and doc_item.has_return
+            else ''
         )
         combine_ref_situation = (
             "and combine it with its calling situation in the project,"
@@ -114,10 +109,12 @@ class ChatEngine:
 
         # debug
         f = f'docs/{doc_item.file}.prompt.md'
-        os.makedirs(os.path.dirname(f))
+        os.makedirs(os.path.dirname(f), exist_ok=True)
         with open(f, 'a') as c:
-            c.write(f'''###{doc_item.name}
-                     {system_prompt}''')
+            c.write((
+                f'### {doc_item.name}\n'
+                f'{system_prompt}\n'
+            ))
 
         return [
             {'role': 'system', 'content': system_prompt},

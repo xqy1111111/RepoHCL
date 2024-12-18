@@ -3,6 +3,7 @@ import os.path
 import shutil
 import subprocess
 import sys
+import threading
 from itertools import islice
 from typing import Dict, Set
 
@@ -12,35 +13,38 @@ from loguru import logger
 
 from ast_generator import gen_sh
 from chat_engine import ChatEngine
-from doc import FunctionItem
+from doc import FunctionItem, DocItem
 from project_manager import ProjectManager
 
 
-def procedure(path: str):
+# 编译项目，生成中间文件（函数列表、调用图）
+def make(path: str, output: str):
     def cmd(command: str, path: str = path):
         subprocess.run(command, shell=True, cwd=path)
         logger.info('command executed: ' + command)
 
     os.environ['CC'] = 'clang-9'
     os.environ['CXX'] = 'clang++-9'
+    # 生成makefile文件
     if os.path.exists(f'{path}/configure'):
         cmd('./configure')
     elif os.path.exists(f'{path}/CMakeLists.txt'):
         cmd('cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_PREFIX=/lib/llvm-9 .')
+    # 基于makefile生成compile_commands.json
     cmd('bear make -j`nproc`')
     gen_sh(path)
     cmd('chmod +x buildast.sh')
     cmd('./buildast.sh')
     cmd(f'lib/cge {path}/astList.txt', path='.')
-    if not os.path.exists('output'):
-        os.mkdir('output')
-    shutil.move('functions.json', 'output')
-    shutil.move('cg.dot', 'output')
+    os.makedirs(output, exist_ok=True)
+    shutil.move('functions.json', output)
+    shutil.move('cg.dot', output)
 
 
-def read_functions() -> Dict[str, Dict[str, str]]:
+# 读取函数列表
+def read_functions(path: str) -> Dict[str, Dict[str, str]]:
     # 调整functions.json
-    with open('output/functions.json', 'r') as f:
+    with open(f'{path}/functions.json', 'r') as f:
         functions = json.loads(f.read())
         to_remove = []
         for k, v in functions.items():
@@ -58,19 +62,20 @@ def read_functions() -> Dict[str, Dict[str, str]]:
             v['filename'] = file[9:] if file.startswith('resource/') else file
             with open(file, 'r') as code:
                 lines = list(islice(code, int(v.get('beginLine')) - 1, int(v.get('endLine'))))
-                v.setdefault('code', ''.join(lines))
+                v.setdefault('code', ''.join(lines).strip())
         for k in to_remove:
             del functions[k]
-    with open('output/functions.json', 'w') as f:
+    with open(f'{path}/functions.json', 'w') as f:
         f.write(json.dumps(functions, indent=4))
     return functions
 
 
-def read_callgraph(nodes: Set[str] = None) -> nx.DiGraph:
+# 读取调用图
+def read_callgraph(path: str, nodes: Set[str] = None) -> nx.DiGraph:
     if nodes is None:
         nodes = {}
     # 解析.dot转为DiGraph
-    (dot,) = pydot.graph_from_dot_file('output/cg.dot')
+    (dot,) = pydot.graph_from_dot_file(f'{path}/cg.dot')
     digraph = nx.DiGraph()
     name_map = {}
     # 添加节点
@@ -101,20 +106,27 @@ def read_callgraph(nodes: Set[str] = None) -> nx.DiGraph:
     return digraph
 
 
-doc_manager = {}
+threadlocal = threading.local()
 
-if __name__ == '__main__':
-    # export OPENAI_API_KEY={KEY}
-    path = sys.argv[1] if len(sys.argv) > 1 else 'resource/libxml2-2.9.9'
-    procedure(path)
-    functions = read_functions()
+
+def get_doc_manager() -> Dict[str, DocItem]:
+    if not hasattr(threadlocal, 'doc_manager'):
+        threadlocal.doc_manager = {}
+    return threadlocal.doc_manager
+
+
+def run(path: str):
+    output_path = f'output/{os.path.basename(path)}'
+    doc_path = 'docs'
+    make(path, output_path)
+    functions = read_functions(output_path)
     to_analyze = set(functions.keys())
-    callgraph = read_callgraph(to_analyze)
+    callgraph = read_callgraph(output_path, to_analyze)
     # 拓扑排序callgraph，排除不需要分析的函数
     sorted_functions = list(reversed(list(nx.topological_sort(callgraph))))
     logger.info(f'functions count: {len(sorted_functions)}')
     ce = ChatEngine(ProjectManager(repo_path=path))
-    doc_path = 'docs'
+    doc_manager = get_doc_manager()
     for i in range(len(sorted_functions)):
         f = sorted_functions[i]
         doc_item = FunctionItem()
@@ -133,5 +145,14 @@ if __name__ == '__main__':
         if not doc_item.imports(doc_path):
             doc_item.md_content = ce.generate_doc(doc_item)
             doc_item.exports(doc_path)
+            logger.info(f'parse {doc_item.name}: {i}/{len(sorted_functions)}')
+        else:
+            logger.info(f'load {doc_item.name}: {i}/{len(sorted_functions)}')
         doc_manager[f] = doc_item
-        logger.info(f'parse {doc_item.name}: {i}/{len(sorted_functions)}')
+    del threadlocal.doc_manager
+
+
+if __name__ == '__main__':
+    # export OPENAI_API_KEY={KEY}
+    path = sys.argv[1] if len(sys.argv) > 1 else 'resource/libxml2-2.9.9'
+    run(path)

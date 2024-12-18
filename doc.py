@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os.path
 from dataclasses import dataclass, field
 from enum import Enum
@@ -25,7 +26,7 @@ class DocItem:
     reference_who: List[DocItem] = field(default_factory=list)
     who_reference_me: List[DocItem] = field(default_factory=list)
 
-    def imports(self, path: str):
+    def imports(self, path: str) -> bool:
         f = f'{path}/{self.file}.md'
         if not os.path.exists(f):
             return False
@@ -48,13 +49,10 @@ class DocItem:
 
     def exports(self, path: str):
         f = f'{path}/{self.file}.md'
-        if os.path.exists(f):
-            return
         os.makedirs(os.path.dirname(f), exist_ok=True)
         # 追加到最后
         with open(f, 'a') as t:
             t.write(self.md_content)
-
 
 @dataclass
 class FunctionItem(DocItem):
