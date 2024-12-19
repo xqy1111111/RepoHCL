@@ -27,4 +27,4 @@ class SimpleLLM:
             return response.choices[0].message.content
         except Exception as e:
             logger.error(f"Error in chat call: {e}")
-            raise
+            raise e

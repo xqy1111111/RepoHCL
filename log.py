@@ -2,6 +2,7 @@
 import inspect
 import logging
 import sys
+from typing import Union
 
 from loguru import logger
 
@@ -44,7 +45,7 @@ RepoAgent 日志记录器对象。
 class InterceptHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         # Get corresponding Loguru level if it exists.
-        level: str | int
+        level: Union[str, int]
         try:
             level = logger.level(record.levelname).name
         except ValueError:

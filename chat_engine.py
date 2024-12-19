@@ -1,4 +1,7 @@
 import os
+from typing import Optional
+
+from loguru import logger
 
 from doc import DocItem, FunctionItem
 from llm_helper import SimpleLLM
@@ -6,7 +9,6 @@ from project_manager import ProjectManager
 from prompt import doc_generation_instruction, documentation_guideline
 from settings import SettingsManager
 
-# openai.BadRequestError: Error code: 400 - {'error': {'code': 'invalid_parameter_error', 'param': None, 'message': '<400> InternalError.Algo.InvalidParameter: Range of input length should be [1, 129024]', 'type': 'invalid_request_error'}, 'id': 'chatcmpl-dea2e488-fd87-9d46-91d7-ba10095f5270', 'request_id': 'dea2e488-fd87-9d46-91d7-ba10095f5270'}
 
 class ChatEngine:
     """
@@ -25,7 +27,6 @@ class ChatEngine:
         code_type = doc_item.code_type
         code_name = doc_item.name
         code_content = doc_item.code
-        # have_return = code_info["have_return"]
         file_path = doc_item.file
         project_structure = self.project.get_project_structure()
 
@@ -125,15 +126,18 @@ class ChatEngine:
             }
         ]
 
-    def generate_doc(self, doc_item: DocItem) -> str:
+    def generate_doc(self, doc_item: DocItem) -> Optional[str]:
         """Generates documentation for a given DocItem."""
-        messages = self.build_prompt(doc_item)
-        md = self._llm.ask(messages)
-        md += f'''
-
-**Code**:
+        try:
+            messages = self.build_prompt(doc_item)
+            md = self._llm.ask(messages)
+            md += f'''
+            **Code**:
 ```C++
 {doc_item.code}
 ```
 '''
-        return md
+            return md
+        except Exception as e:
+            logger.error(f'fail to generate doc for {doc_item.name}, err={e}')
+            return None

@@ -39,7 +39,7 @@ class DocItem:
                     if ok:
                         return True
                     # 是当前函数
-                    if line[4:].strip('* \n\r') == self.name:
+                    if line[4:].strip() == self.name:
                         ok = True
                         continue
                     ok = False

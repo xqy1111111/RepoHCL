@@ -24,6 +24,7 @@ class APINote(BaseModel):
 
 
 class RATask(BaseModel):
+    id: str  # ID
     repo: str  # 仓库OSS地址
     callback: str  # 回调URL
 
@@ -35,16 +36,18 @@ class RAStatus(Enum):
 
 
 class RAResult(BaseModel):
+    id: str
     status: int
     message: str = ''
     score: float = 0
-    result: List[APINote] = ''
+    result: Optional[List[APINote]] = None
 
 
 def fetch_repo(repo: str) -> str:
     save_path = 'resource/'
-    data = requests.get(repo).content
-    archive = resolve_archive(data)
+    response = requests.get(repo)
+    logger.info(f'fetch repo {response.status_code} {len(response.content)}')
+    archive = resolve_archive(response.content)
     output_path = archive.decompress(save_path)
     if output_path is None:
         raise Exception('archive is empty')
@@ -55,14 +58,22 @@ def fetch_repo(repo: str) -> str:
 async def hcl(req: RATask, background_tasks: BackgroundTasks) -> RAResult:
     try:
         path = fetch_repo(req.repo)
+        logger.info(f'fetch repo {req.repo} to {path}')
     except Exception as e:
         logger.error(f'fail to get `{req.repo}`, err={e}')
-        return RAResult(status=RAStatus.fail.value, message=str(e))
-    background_tasks.add_task(run_with_response, path=path, callback=req.callback)
-    return RAResult(status=RAStatus.received.value, message='task received')
+        return RAResult(id=req.id, status=RAStatus.fail.value, message=str(e))
+    background_tasks.add_task(run_with_response, path=path, req=req)
+    return RAResult(id=req.id, status=RAStatus.received.value, message='task received')
 
 
-def run_with_response(path: str, callback: str):
+@app.post('/tools/callback')
+def test(req: RAResult):
+    logger.info(req.model_dump_json())
+    with open('a.json', 'w') as f:
+        f.write(req.model_dump_json())
+
+
+def run_with_response(path: str, req: RATask):
     run(path)
     doc_path = f'docs/{os.path.basename(path)}'
     data = []
@@ -74,7 +85,7 @@ def run_with_response(path: str, callback: str):
             parameters_start = False
             for line in fr:
                 if line.startswith('### '):
-                    line = line[4:].strip('* \n\r').replace('(anonymous namespace)::', '')
+                    line = line[4:].strip().replace('(anonymous namespace)::', '')
                     i = line.rfind('::')
                     if i == -1:
                         name = line
@@ -111,5 +122,5 @@ def run_with_response(path: str, callback: str):
                     continue
                 if not ignore:
                     description = line
-    requests.post(callback,
-                  json=RAResult(status=RAStatus.success.value, message='ok', result=data).model_dump_json())
+    requests.post(req.callback,
+                  json=RAResult(id=req.id, status=RAStatus.success.value, message='ok', result=data).model_dump_json())

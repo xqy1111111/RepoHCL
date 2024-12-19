@@ -26,6 +26,7 @@ def make(path: str, output: str):
     os.environ['CC'] = 'clang-9'
     os.environ['CXX'] = 'clang++-9'
     # 生成makefile文件
+    logger.info(f'{path} content:{str(os.listdir(path))}')
     if os.path.exists(f'{path}/configure'):
         cmd('./configure')
     elif os.path.exists(f'{path}/CMakeLists.txt'):
@@ -116,16 +117,17 @@ def get_doc_manager() -> Dict[str, DocItem]:
 
 
 def run(path: str):
-    output_path = f'output/{os.path.basename(path)}'
+    resource_path = f'resource/{path}'
+    output_path = f'output/{path}'
     doc_path = 'docs'
-    make(path, output_path)
+    make(resource_path, output_path)
     functions = read_functions(output_path)
     to_analyze = set(functions.keys())
     callgraph = read_callgraph(output_path, to_analyze)
     # 拓扑排序callgraph，排除不需要分析的函数
     sorted_functions = list(reversed(list(nx.topological_sort(callgraph))))
     logger.info(f'functions count: {len(sorted_functions)}')
-    ce = ChatEngine(ProjectManager(repo_path=path))
+    ce = ChatEngine(ProjectManager(repo_path=resource_path))
     doc_manager = get_doc_manager()
     for i in range(len(sorted_functions)):
         f = sorted_functions[i]
@@ -144,15 +146,22 @@ def run(path: str):
                                                 callgraph.successors(f))))
         if not doc_item.imports(doc_path):
             doc_item.md_content = ce.generate_doc(doc_item)
+            # 文档生成失败，先跳过
+            if doc_item.md_content is None:
+                continue
             doc_item.exports(doc_path)
             logger.info(f'parse {doc_item.name}: {i}/{len(sorted_functions)}')
         else:
             logger.info(f'load {doc_item.name}: {i}/{len(sorted_functions)}')
         doc_manager[f] = doc_item
     del threadlocal.doc_manager
+    shutil.rmtree(resource_path)
+    shutil.rmtree(output_path)
 
 
 if __name__ == '__main__':
     # export OPENAI_API_KEY={KEY}
     path = sys.argv[1] if len(sys.argv) > 1 else 'resource/libxml2-2.9.9'
-    run(path)
+    basename = os.path.basename(path)
+    shutil.copytree(path, f'resource/{basename}')
+    run(basename)

@@ -1,9 +1,10 @@
 import io
 import os
 import tarfile
+import uuid
 import zipfile
 from abc import abstractmethod, ABCMeta
-from typing import Callable, IO, Union
+from typing import Callable, IO, Union, Optional
 
 import chardet
 
@@ -15,7 +16,7 @@ class Archive(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def decompress(self, path: str) -> str | None:
+    def decompress(self, path: str) -> Optional[str]:
         pass
 
     @abstractmethod
@@ -36,10 +37,11 @@ class ZipArchive(Archive):
         if len(prefix) == 1:
             self._prefix = prefix[0]
 
-    def decompress(self, path: str) -> str | None:
-        self._f.extractall(path)
+    def decompress(self, path: str) -> Optional[str]:
         if len(self._f.namelist()) > 0:
-            return self._f.namelist()[0]
+            dirname = self._f.namelist()[0].strip('/') if self._f.namelist()[0].endswith('/') else uuid.uuid4()
+            self._f.extractall(f'{path}/{dirname}')
+            return dirname
 
     def decompress_by_name(self, name: str, path: str) -> None:
         if self._prefix is not None and len(self._prefix):
@@ -66,10 +68,11 @@ class TarArchive(Archive):
         if len(prefix) == 1:
             self._prefix = prefix[0]
 
-    def decompress(self, path: str) -> str | None:
-        self._f.extractall(path)
+    def decompress(self, path: str) -> Optional[str]:
         if len(self._f.getnames()) > 0:
-            return self._f.getnames()[0]
+            dirname = self._f.getnames()[0].strip('/') if self._f.getnames()[0].endswith('/') else uuid.uuid4()
+            self._f.extractall(f'{path}/{dirname}')
+            return dirname
 
     def decompress_by_name(self, name: str, path: str) -> None:
         if self._prefix is not None and len(self._prefix):
