@@ -1,5 +1,6 @@
 import json
 import os.path
+import sys
 import time
 from enum import Enum
 from typing import Optional
@@ -48,6 +49,8 @@ class RAResult(BaseModel):
 def fetch_repo(repo: str) -> str:
     save_path = 'resource/'
     response = requests.get(repo)
+    if response.status_code == 403:
+        raise Exception(response.text)
     logger.info(f'fetch repo {response.status_code} {len(response.content)}')
     archive = resolve_archive(response.content)
     output_path = archive.decompress(save_path)
