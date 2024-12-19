@@ -150,9 +150,9 @@ def run(path: str):
             if doc_item.md_content is None:
                 continue
             doc_item.exports(doc_path)
-            logger.info(f'parse {doc_item.name}: {i}/{len(sorted_functions)}')
+            logger.info(f'parse {doc_item.name}: {i + 1}/{len(sorted_functions)}')
         else:
-            logger.info(f'load {doc_item.name}: {i}/{len(sorted_functions)}')
+            logger.info(f'load {doc_item.name}: {i + 1}/{len(sorted_functions)}')
         doc_manager[f] = doc_item
     del threadlocal.doc_manager
     shutil.rmtree(resource_path)

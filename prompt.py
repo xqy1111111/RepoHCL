@@ -6,7 +6,7 @@ doc_generation_instruction = (
     "Currently, you are in a project and the related hierarchical structure of this project is as follows\n"
     "{project_structure}\n\n"
     "The path of the document you need to generate in this project is {file_path}.\n"
-    'Now you need to generate a document for a {code_type_tell}, whose name is "{code_name}".\n\n'
+    'Now you need to generate a document for a {code_type_tell}, whose name is `{code_name}`.\n\n'
     "The content of the code is as follows:\n"
     "```\n"
     "{code_content}\n\n"

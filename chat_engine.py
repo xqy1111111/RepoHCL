@@ -35,7 +35,7 @@ class ChatEngine:
                 return ""
             prompt = 'As you can see, the code calls the following objects, their docs and code are as following:\n\n'
             for reference_item in doc_item.reference_who:
-                prompt += f'**Obj**: {reference_item.name}\n\n' + '**Document**:\n\n' + '\n'.join(
+                prompt += f'**Obj**: `{reference_item.name}`\n\n' + '**Document**:\n\n' + '\n'.join(
                     list(map(lambda t: '> ' + t, reference_item.md_content.split('\n')))) + '\n---\n'
             return prompt
 
@@ -44,7 +44,7 @@ class ChatEngine:
                 return ""
             prompt = 'Also, the code has been called by the following objects, their code and docs are as following:\n'
             for referencer_item in doc_item.who_reference_me:
-                prompt += f'**Obj**: {referencer_item.name}\n' + '**Document**:\n' + '\n'.join(
+                prompt += f'**Obj**: `{referencer_item.name}`\n\n' + '**Document**:\n\n' + '\n'.join(
                     list(map(lambda t: '> ' + t, referencer_item.md_content.split('\n')))) + '\n---\n'
             return prompt
 
