@@ -71,7 +71,7 @@ class ChatEngine:
         ) if isinstance(doc_item, FunctionItem) and doc_item.has_arg else ''
         have_return_tell = (
             "> **Output Example**: \n"
-            "> ```\n"
+            "> ```C++\n"
             "> (mock possible usage examples of this function with codes.)"
             "> ```"
             "\n>\n"
@@ -132,7 +132,8 @@ class ChatEngine:
             messages = self.build_prompt(doc_item)
             md = self._llm.ask(messages)
             md += f'''
-            **Code**:
+            
+**Code**:
 ```C++
 {doc_item.code}
 ```

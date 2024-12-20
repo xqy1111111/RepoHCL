@@ -9,14 +9,18 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo "Asia/Shangh
 
 RUN apt-get update
 
-RUN apt-get install -y build-essential llvm-9-dev cmake ninja-build clang-9 libclang-9-dev zlib1g-dev wget bear python3-dev python-dev python3-pip
+RUN apt-get install -y build-essential llvm-9-dev cmake ninja-build clang-9 libclang-9-dev zlib1g-dev wget bear python3-dev python-dev python3-pip nodejs npm
+
+RUN npm config set registry http://registry.npm.taobao.org/ && npm install -g gitbook-cli
+
+RUN gitbook -V
 
 WORKDIR /root/
 
 COPY . .
 
-RUN mkdir -p resource && mv Vanguard-V2-StaticChecker resource/vanguard
-
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && pip install -r requirements.txt
 
-RUN python3 main.py resource/vanguard
+RUN mv Vanguard-V2-StaticChecker vanguard && python3 main.py vanguard
+
+RUN gitbook init docs/vanguard && gitbook serve docs/vanguard

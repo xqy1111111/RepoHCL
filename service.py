@@ -1,6 +1,5 @@
 import json
 import os.path
-import sys
 import time
 from enum import Enum
 from typing import Optional

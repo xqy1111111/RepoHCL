@@ -7,6 +7,7 @@ import threading
 from itertools import islice
 from typing import Dict, Set
 
+import click
 import networkx as nx
 import pydot
 from loguru import logger
@@ -31,6 +32,8 @@ def make(path: str, output: str):
         cmd('./configure')
     elif os.path.exists(f'{path}/CMakeLists.txt'):
         cmd('cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_PREFIX=/lib/llvm-9 .')
+    if not os.path.exists(f'{path}/Makefile'):
+        raise Exception('Makefile not found in root')
     # 基于makefile生成compile_commands.json
     cmd('bear make -j`nproc`')
     gen_sh(path)
@@ -116,6 +119,7 @@ def get_doc_manager() -> Dict[str, DocItem]:
     return threadlocal.doc_manager
 
 
+# export OPENAI_API_KEY={KEY}
 def run(path: str):
     resource_path = f'resource/{path}'
     output_path = f'output/{path}'
@@ -159,9 +163,15 @@ def run(path: str):
     shutil.rmtree(output_path)
 
 
-if __name__ == '__main__':
-    # export OPENAI_API_KEY={KEY}
-    path = sys.argv[1] if len(sys.argv) > 1 else 'resource/libxml2-2.9.9'
+@click.command()
+@click.argument('path', type=click.Path(exists=True))
+def main(path):
+    path = click.format_filename(path).strip('/')
     basename = os.path.basename(path)
-    shutil.copytree(path, f'resource/{basename}')
+    # 移动到工作路径
+    shutil.copytree(path, f'resource/{basename}', dirs_exist_ok=True)
     run(basename)
+
+
+if __name__ == '__main__':
+    main()
