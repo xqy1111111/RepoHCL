@@ -109,6 +109,24 @@ def read_callgraph(path: str, nodes: Set[str] = None) -> nx.DiGraph:
 
     return digraph
 
+def response_with_gitbook(path: str):
+    doc_path = f'docs/{path}'
+    summary = '# Summary\n'
+    for root, _, files in os.walk(doc_path):
+        root = root[len(doc_path) + 1:]
+        if len(root) > 0:
+            summary += f'{(len(root.split('/')) - 1) * '  '}* [{root}]\n'
+        for f in files:
+            if '.prompt' not in f:
+                if len(root) > 0:
+                    summary += f'{len(root.split('/')) * '  '}* [{f[:-3]}]({root}/{f})\n'
+                else:
+                    summary += f'* [{f[:-3]}]({f})\n'
+    with open(f'{doc_path}/SUMMARY.md', 'w') as f:
+        f.write(summary)
+    with open(f'{doc_path}/README.md', 'w') as f:
+        f.write(f'### {path}\n')
+
 
 threadlocal = threading.local()
 
@@ -174,4 +192,6 @@ def main(path):
 
 
 if __name__ == '__main__':
+    response_with_gitbook('vanguard')
+    sys.exit()
     main()

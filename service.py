@@ -112,6 +112,10 @@ def run_with_response(path: str, req: RATask):
                         parameters_start = True
                         parameters = ''
                         continue
+                    if line.strip().startswith('**Code Description**'):
+                        example_start = False
+                        parameters_start = False
+                        continue
                     if line.strip().startswith('**Output Example**'):
                         example_start = True
                         parameters_start = False
@@ -141,7 +145,8 @@ def run_with_response(path: str, req: RATask):
                                                   status=RAStatus.success.value,
                                                   message='ok',
                                                   result=json.dumps(data)).model_dump_json(exclude_none=True,
-                                                                                           exclude_unset=True))
+                                                                                           exclude_unset=True),
+                                    headers={'Content-Type': 'application/json'})
                 logger.info(f'callback send, status:{res.status_code}, message:{res.text}')
                 break
             except Exception as e:
@@ -149,4 +154,6 @@ def run_with_response(path: str, req: RATask):
                 time.sleep(1)
     except Exception as e:
         logger.error(f'fail to generate doc for {path}, err={e}')
-        requests.post(req.callback, data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)))
+        requests.post(req.callback, data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(exclude_none=True, exclude_unset=True),
+                      headers={'Content-Type': 'application/json'})
+

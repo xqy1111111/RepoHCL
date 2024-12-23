@@ -44,10 +44,9 @@ and be able to identify which are the business code files to implement core func
 and which are non-business code files such as codes for documents and tests. 
 According to the project structure provided by the user, you retain the necessary paths and return. 
 Please keep the input and output formats consistent and return the modified results directly without explaining the reasons.
-The directory structure provided by the user is wrapped with [] 
-and the parent-child relationship between directories is indicated by a 2-space indentation, 
-for example: the user gives the following project structure 
-[
+The directory structure provided by the user is indicated by a 2-space indentation, 
+for example: the user gives the following project structure
+
 my_cpp_project
   doc 
     doc.cpp        
@@ -61,7 +60,7 @@ my_cpp_project
   test
     test_main.cpp
     test_my_class.cpp
-].
+    
 You should think like this:
 (1) The .c files under doc and test seem to be used for documentation and testing, not business code, so they should be excluded. 
 (2) Although test_main.cpp is in the src directory, it is also used for testing based on its name, so it should be excluded.
