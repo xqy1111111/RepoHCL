@@ -1,6 +1,7 @@
 import json
 import os.path
 import time
+import uuid
 from enum import Enum
 from typing import Optional
 
@@ -46,16 +47,14 @@ class RAResult(BaseModel):
 
 
 def fetch_repo(repo: str) -> str:
-    save_path = 'resource/'
+    save_path = uuid.uuid4().hex
     response = requests.get(repo)
     if response.status_code == 403:
         raise Exception(response.text)
     logger.info(f'fetch repo {response.status_code} {len(response.content)}')
     archive = resolve_archive(response.content)
-    output_path = archive.decompress(save_path)
-    if output_path is None:
-        raise Exception('archive is empty')
-    return output_path
+    archive.decompress(f'resource/{save_path}')
+    return save_path
 
 
 @app.post('/tools/hcl')

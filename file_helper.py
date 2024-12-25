@@ -1,12 +1,13 @@
 import io
 import os
+import shutil
 import tarfile
+import tempfile
 import zipfile
 from abc import abstractmethod, ABCMeta
 from typing import Callable, IO, Union, Optional
 
 import chardet
-from faker import Faker
 
 
 class Archive(metaclass=ABCMeta):
@@ -37,17 +38,15 @@ class ZipArchive(Archive):
         if len(prefix) == 1:
             self._prefix = prefix[0]
 
-    def decompress(self, path: str) -> Optional[str]:
-        if len(self._f.namelist()) > 0:
-            # 如果目录下直接是文件
-            if len(list(filter(lambda _n: '/' not in _n, self._f.namelist()))) > 0:
-                dirname = 'root-' + Faker().file_name(extension='')
-                self._f.extractall(f'{path}/{dirname}')
-                return dirname
-            # 否则目录下应是一个文件夹
-            dirname = self._f.namelist()[0]
-            self._f.extractall(path)
-            return dirname
+    def decompress(self, path: str):
+        temp_path = tempfile.mkdtemp()
+        self._f.extractall(temp_path)
+        # 如果目录下没有文件 && 目录下只有一个文件夹
+        while (len(list(filter(lambda f: os.path.isfile(f'{temp_path}/{f}'),os.listdir(temp_path)))) == 0 and
+                len(os.listdir(temp_path)) == 1):
+            temp_path = f'{temp_path}/{os.listdir(temp_path)[0]}'
+        shutil.move(temp_path, path)
+
 
     def decompress_by_name(self, name: str, path: str) -> None:
         if self._prefix is not None and len(self._prefix):
@@ -74,17 +73,15 @@ class TarArchive(Archive):
         if len(prefix) == 1:
             self._prefix = prefix[0]
 
-    def decompress(self, path: str) -> Optional[str]:
-        if len(self._f.getnames()) > 0:
-            # 如果目录下直接是文件
-            if len(list(filter(lambda _n: _n.isfile() and '/' not in _n.name, self._f.getmembers()))) > 0:
-                dirname = 'root-' + Faker().file_name(extension='')
-                self._f.extractall(f'{path}/{dirname}')
-                return dirname
-            # 否则目录下应是一个文件夹
-            dirname = self._f.getnames()[0]
-            self._f.extractall(path)
-            return dirname
+    def decompress(self, path: str):
+        temp_path = tempfile.mkdtemp()
+        self._f.extractall(temp_path)
+        # 如果目录下没有文件 && 目录下只有一个文件夹
+        while (len(list(filter(lambda f: os.path.isfile(f'{temp_path}/{f}'),os.listdir(temp_path)))) == 0 and
+               len(os.listdir(temp_path)) == 1):
+            temp_path = f'{temp_path}/{os.listdir(temp_path)[0]}'
+        shutil.move(temp_path, path)
+
 
     def decompress_by_name(self, name: str, path: str) -> None:
         if self._prefix is not None and len(self._prefix):

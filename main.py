@@ -151,6 +151,7 @@ def run(path: str):
     logger.info(f'functions count: {len(sorted_functions)}')
     ce = ChatEngine(ProjectManager(repo_path=resource_path))
     doc_manager = get_doc_manager()
+    # 生成文档
     for i in range(len(sorted_functions)):
         f = sorted_functions[i]
         doc_item = FunctionItem()
@@ -176,6 +177,9 @@ def run(path: str):
         else:
             logger.info(f'load {doc_item.name}: {i + 1}/{len(sorted_functions)}')
         doc_manager[f] = doc_item
+    # 生成gitbook所需文档
+    response_with_gitbook(path)
+    # 后置清理
     del threadlocal.doc_manager
     shutil.rmtree(resource_path)
     shutil.rmtree(output_path)
@@ -192,6 +196,4 @@ def main(path):
 
 
 if __name__ == '__main__':
-    response_with_gitbook('vanguard')
-    sys.exit()
     main()

@@ -23,4 +23,6 @@ RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && pi
 
 RUN mv Vanguard-V2-StaticChecker vanguard && python3 main.py vanguard
 
+# gitbook port 4000
+
 RUN gitbook init docs/vanguard && gitbook serve docs/vanguard
