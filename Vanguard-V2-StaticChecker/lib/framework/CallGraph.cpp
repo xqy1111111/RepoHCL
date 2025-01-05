@@ -428,7 +428,7 @@ void CallGraph::writeDotFile(std::ostream &out) {
 
 void CallGraph::writeNodeDot(std::ostream &out, CallGraphNode *node) {
     ASTFunction *function = node->getFunction();
-    out << "    Node" << function << " [shape=record,label=\"" << function->getFullName() << "\"];" << std::endl;
+    out << "    Node" << function << " [shape=record,label=\"" << function->getPrettyName() << "\"];" << std::endl;
     for (ASTFunction *func: node->getChildren()) {
         out << "    Node" << function << " -> "
             << "Node" << func << ";" << std::endl;

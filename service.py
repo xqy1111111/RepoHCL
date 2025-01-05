@@ -1,9 +1,11 @@
 import json
 import os.path
+import re
+import sys
 import time
 import uuid
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 import requests
 from fastapi import FastAPI, BackgroundTasks
@@ -11,7 +13,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from file_helper import resolve_archive
-from main import run
+from main import run, get_extern_functions
 from settings import SettingsManager
 
 app = FastAPI()
@@ -19,10 +21,11 @@ settings = SettingsManager.get_setting()
 
 
 class APINote(BaseModel):
-    clazz: Optional[str]
+    note: Optional[str]
     name: str
     parameters: Optional[str]
     description: str
+    detail: str
     example: Optional[str]
 
 
@@ -81,63 +84,46 @@ def test2():
     return 'hello'
 
 
+# 使用正则表达式提取所有函数信息
+def extract_all_functions_info(text) -> List[APINote]:
+    function_pattern = re.compile(r'###(.*?)\n(.*?)\n(.*?)(###|\Z)', re.DOTALL)
+    res: List[APINote] = []
+    for match in function_pattern.finditer(text):
+        function_block = match.group(3) + match.group(4)
+        parameters = ''
+        note = ''
+        name = match.group(1).strip(':\n ')
+        description = match.group(2).strip(':\n ')
+        parameter_matches = re.search(r'\*\*Parameter\*\*(.*?)\*\*', function_block, re.DOTALL)
+        if parameter_matches:
+            parameters = parameter_matches.group(1).strip(':\n ')
+        code_description_match = re.search(r'\*\*Code Description\*\*(.*?)\*\*', function_block, re.DOTALL)
+        code_description = code_description_match.group(1).strip()
+        note_match = re.search(r'\*\*Note\*\*(.*)\*\*', function_block, re.DOTALL)
+        if note_match:
+            note = note_match.group(1).strip(':\n ')
+        output_example_match = re.search(r'\*\*Output Example\*\*(.*?)(\*\*|###)', function_block, re.DOTALL)
+        output_example = output_example_match.group(1).strip(':\n ')
+        res.append(APINote(name=name, parameters=parameters, description=description,
+                           example=output_example, detail=code_description, note=note))
+    return res
+
+
 def run_with_response(path: str, req: RATask):
     try:
         run(path)
         doc_path = f'docs/{path}'
-        data = []
+        data: List[APINote] = []
         for f in os.listdir(doc_path):
             if '.prompt.' in f:
                 continue
             with open(f'{doc_path}/{f}', 'r') as fr:
-                example_start = False
-                parameters_start = False
-                for line in fr:
-                    if line.startswith('### '):
-                        line = line[4:].strip().replace('(anonymous namespace)::', '')
-                        i = line.rfind('::')
-                        if i == -1:
-                            name = line
-                            clazz = None
-                        else:
-                            name = line[i + 2:]
-                            clazz = line[:i]
-                        parameters = None
-                        example = None
-                        ignore = False
-                        continue
-                    if line.strip().startswith('**Parameter**'):
-                        example_start = False
-                        parameters_start = True
-                        parameters = ''
-                        continue
-                    if line.strip().startswith('**Code Description**'):
-                        example_start = False
-                        parameters_start = False
-                        continue
-                    if line.strip().startswith('**Output Example**'):
-                        example_start = True
-                        parameters_start = False
-                        example = ''
-                        continue
-                    if line.strip().startswith('**Code**'):
-                        ignore = True
-                        example_start = False
-                        parameters_start = False
-                        data.append(APINote(clazz=clazz, name=name, parameters=parameters, description=description,
-                                            example=example).model_dump(exclude_none=True, exclude_unset=True))
-                        continue
-                    if parameters_start:
-                        parameters += line
-                        continue
-                    if example_start:
-                        example += line
-                        continue
-                    if not ignore:
-                        description = line
+                data.extend(extract_all_functions_info(fr.read()))
+        data = list(map(lambda n: n.model_dump(exclude_none=True, exclude_unset=True), data))
         # 回调传结果，重试几次
         retry = 5
         while retry > 0:
+            retry -= 1
             try:
                 res = requests.post(req.callback,
                                     data=RAResult(id=req.id,
@@ -153,6 +139,10 @@ def run_with_response(path: str, req: RATask):
                 time.sleep(1)
     except Exception as e:
         logger.error(f'fail to generate doc for {path}, err={e}')
-        requests.post(req.callback, data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(exclude_none=True, exclude_unset=True),
+        requests.post(req.callback,
+                      data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(
+                          exclude_none=True, exclude_unset=True),
                       headers={'Content-Type': 'application/json'})
 
+
+# run_with_response('libxml', RATask(id='8', callback='127.0.0.1:4000/tools/callback', repo='1'))

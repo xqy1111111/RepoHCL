@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 import os.path
+import re
+from abc import abstractmethod, ABC
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List
@@ -14,9 +15,8 @@ class DocItemStatus(Enum):
 
 
 @dataclass
-class DocItem:
+class DocItem(ABC):
     item_status: DocItemStatus = DocItemStatus.initial
-    code_type = ''
     file: str = ''
     name: str = ''
     code: str = ''
@@ -26,37 +26,39 @@ class DocItem:
     reference_who: List[DocItem] = field(default_factory=list)
     who_reference_me: List[DocItem] = field(default_factory=list)
 
+    @abstractmethod
+    def doc_type(self) -> str:
+        pass
+
+    @staticmethod
+    def _re_fix(s: str) -> str:
+        return s.replace('(', r'\(').replace(')', r'\)').replace('[', r'\[').replace(']', r'\]').replace('*', r'\*')
+
     def imports(self, path: str) -> bool:
-        f = f'{path}/{self.file}.md'
+        f = f'{path}/{self.file}.{self.doc_type()}.md'
         if not os.path.exists(f):
             return False
         with open(f, 'r') as t:
-            ok = False
-            for line in t:
-                # 检查是否是当前函数
-                if line.startswith('### '):
-                    # 当前函数已经处理完，结束处理
-                    if ok:
-                        return True
-                    # 是当前函数
-                    if line[4:].strip() == self.name:
-                        ok = True
-                        continue
-                    ok = False
-                if ok:
-                    self.md_content += line
+            text = t.read()
+            match = re.search('(### ' + self._re_fix(self.name) + r'.*?)(###|\Z)', text, re.DOTALL)
+            if match:
+                self.md_content = match.group(1)
         return len(self.md_content) > 0
 
     def exports(self, path: str):
-        f = f'{path}/{self.file}.md'
+        f = f'{path}/{self.file}.{self.doc_type()}.md'
         os.makedirs(os.path.dirname(f), exist_ok=True)
         # 追加到最后
         with open(f, 'a') as t:
             t.write(self.md_content)
 
+
 @dataclass
 class FunctionItem(DocItem):
-    code_type = 'Function'
+    access: str = 'private'
+
+    def doc_type(self) -> str:
+        return 'function'
 
     # parameters: List[str] = field(default_factory=list)
     def has_return(self) -> bool:
@@ -68,4 +70,14 @@ class FunctionItem(DocItem):
 
 @dataclass
 class ClassItem(DocItem):
-    code_type = 'ClassDef'
+    has_attrs: bool = False
+
+    def doc_type(self) -> str:
+        return 'class'
+
+
+@dataclass
+class ModuleItem(DocItem):
+
+    def doc_type(self) -> str:
+        return 'module'

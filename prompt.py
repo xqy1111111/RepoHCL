@@ -1,5 +1,3 @@
-
-
 doc_generation_instruction = (
     "You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object. "
     "The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.\n\n"
@@ -7,13 +5,10 @@ doc_generation_instruction = (
     "{project_structure}\n\n"
     "The path of the document you need to generate in this project is {file_path}.\n"
     'Now you need to generate a document for a {code_type_tell}, whose name is `{code_name}`.\n\n'
-    "The content of the code is as follows:\n"
-    "```C++\n"
     "{code_content}\n\n"
-    "```\n\n"
     "{reference_letter}\n"
     "{referencer_content}\n\n"
-    "Please generate a detailed explanation document for this object based on the code of the target object itself {combine_ref_situation}.\n\n"
+    "Please generate a detailed explanation document for this object based on the code of the target object itself and combine it with its calling situation in the project.\n\n"
     "Please write out the function of this {code_type_tell} in bold plain text, followed by a detailed analysis in plain text "
     "(including all details), in language {language} to serve as the documentation for this part of the code.\n\n"
     "The standard format is as follows:\n\n"
@@ -23,7 +18,9 @@ doc_generation_instruction = (
     "> **Code Description**: The description of this {code_type_tell}."
     "(Detailed and CERTAIN code analysis and description...{has_relationship})\n>\n"
     "> **Note**: Points to note about the use of the code\n>\n"
-    "{have_return_tell}"
+    "> **Example**: \n"
+    "{example}"
+    "> \n\n"
     "Please note:\n"
     "- Any part of the content you generate SHOULD NOT CONTAIN Markdown hierarchical heading and divider syntax.\n"
     "- Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description "
@@ -73,4 +70,29 @@ my_cpp_project
   src
     main.cpp
     my_class.cpp
+'''
+
+modules_summarize_prompt = '''
+You are an expert in software architecture analysis. Your task is to review function descriptions from a C++ code repository and organize them into coherent functional modules based on their purpose and interrelations. You will employ a structured approach to ensure accurate and insightful categorization.
+For each identified functional module, you should output a structured summary in language {language} using the following format:
+
+> ### Module Name (A descriptive title indicating the primary functionality of the module)
+> **Module Summary**
+> (A concise paragraph summarizing the module's purpose, how it contributes to solving specific problems, and which functions work together within the module.)
+> **Functions List** (A list of function names included in this module)
+> - Function1
+> - Function2
+
+You'd better consider the following workflow:
+1. Identify Core Functionality. Start by reading through all function descriptions to get a broad understanding of the available functionalities and think about the core tasks or operations that these functions enable.
+2. Define Functional Modules. Based on the core functionalities, define initial functional modules that encapsulate related tasks or operations. Use your expertise to determine logical groupings of functions that contribute to similar outcomes or processes.
+3. Analyze Function Interdependencies. Examine how functions interact with one another. Consider whether they are called in sequence, share data, or serve complementary purposes. Recognize that a single function can be part of multiple modules if it serves different roles or contexts.
+4. Refine Module Definitions. Review and adjust the boundaries of the modules as needed to ensure they accurately reflect the relationships between functions. Ensure that each module's summary clearly articulates its unique value and contribution to the overall system.
+5. Generate Documentation. Maintain consistency in terminology and depth of detail across all module summaries.
+
+Please Note:
+- Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
+
+Now a list of function descriptions are provided as follow, you can start working.
+{function_list}
 '''

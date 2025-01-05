@@ -67,6 +67,7 @@ public:
     this->use = use;
     funcName = FD->getQualifiedNameAsString();
     fullName = common::getFullName(FD);
+    prettyName = common::getPrettyName(FD);
     param_size = FD->param_size();
 
     if (FD->hasBody())
@@ -83,6 +84,7 @@ public:
     this->use = use;
 
     fullName = funFullName;
+    prettyName = common::getPrettyName(FD);
     funcName = FD->getQualifiedNameAsString();
 
     param_size = FD->param_size();
@@ -94,6 +96,8 @@ public:
   unsigned getParamSize() const { return param_size; }
 
   const std::string &getFullName() const { return fullName; }
+
+  const std::string &getPrettyName() const { return prettyName; }
 
   const std::string &getFunctionName() const { return funcName; }
 
@@ -108,6 +112,7 @@ public:
 private:
   std::string funcName;
   std::string fullName;
+  std::string prettyName;
   unsigned param_size;
 
   Kind functionType;

@@ -4,8 +4,10 @@
 
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <ctime>
-
+#include <clang/AST/Decl.h>
+#include <clang/AST/DeclTemplate.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <algorithm>
 
@@ -120,12 +122,65 @@ void ASTBimap::removeVariable(ASTVariable *V) {
     variableRight.erase(VD);
 }
 
+bool isFunctionInner(FunctionDecl* FD) {
+    // 检查是否是外部链接
+    if (FD->getFormalLinkage() == ExternalLinkage){
+        // 检查 Visibility 属性的值是否为 "hidden"
+        if (const auto *attr = FD->getAttr<VisibilityAttr>()) {
+            if(attr->getVisibility() == VisibilityAttr::Hidden){
+                return false;
+            }
+        }
+        // 检查是否是在匿名命名空间中，好像匿名空间不是外部链接，因此没有必要检查
+        if(isa<NamespaceDecl>(FD->getDeclContext())){
+            return !cast<NamespaceDecl>(FD->getDeclContext())->isAnonymousNamespace();
+        }
+        // 检查是否在类中
+        if(FD->isCXXClassMember()){
+            return FD->getAccess() == AccessSpecifier::AS_public;
+        }
+        // 检查是否是函数模板
+        if(FD->getTemplatedKind() != FunctionDecl::TemplatedKind::TK_NonTemplate){
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+std::string accessToString(AccessSpecifier access){
+    switch(access){
+        case AccessSpecifier::AS_public:
+            return "public";
+        case AccessSpecifier::AS_protected:
+            return "protected";
+        case AccessSpecifier::AS_private:
+            return "private";
+        default:
+            return "private";
+    }
+}
+
+// 一个模板函数，用于从任意声明中获取文件名和行号范围。
+template <typename T>
+void getDeclarationLocation(const T *decl, std::string &fileName, int &beginLine, int &endLine) {
+    ASTContext &context = decl->getASTContext();
+    SourceManager &sm = context.getSourceManager();
+    // 获取声明的开始位置和结束位置
+    FullSourceLoc beginLoc(sm.getExpansionLoc(decl->getBeginLoc()), sm);
+    FullSourceLoc endLoc(sm.getExpansionLoc(decl->getEndLoc()), sm);
+    fileName = sm.getFilename(beginLoc).str();
+    beginLine = sm.getSpellingLineNumber(beginLoc);
+    endLine = sm.getSpellingLineNumber(endLoc);
+}
+
 ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                        Config &configure)
         : resource(resource), c(configure) {
 
     // 顺便列举全部函数体
     cJSON *functions_json = cJSON_CreateObject();
+    cJSON *records_json = cJSON_CreateObject();
 
     max_size = std::stoi(configure.getOptionBlock("Framework")["queue_size"]);
     std::unordered_set <std::string> functionNames;
@@ -138,7 +193,6 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
         std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
         std::vector < FunctionDecl * > functions =
                 common::getFunctions(AU->getASTContext(), AU->getStartOfMainFileID());
-
         for (FunctionDecl *FD: functions) {
             std::string name = common::getFullName(FD);
             bool use = (functionNames.count(name) == 0);
@@ -181,23 +235,9 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                 resource.addLambdaASTFunction(lambda, AF, lambdaName, use);
             }
             // save the function loc
-            std::string FDLocBegin = FD->getBeginLoc().printToString(
-                    FD->getASTContext().getSourceManager());
-            int firstColonInBegin = FDLocBegin.find(":");
-            int secondColonInBegin = FDLocBegin.find(":", firstColonInBegin + 1);
-            std::string fileName = FDLocBegin.substr(0, firstColonInBegin);
-            std::string locLinesInBegin = FDLocBegin.substr(
-                    firstColonInBegin + 1, secondColonInBegin - firstColonInBegin - 1);
-            int beginLine = std::stoi(locLinesInBegin);
-
-            std::string FDLocEnd =
-                    FD->getEndLoc().printToString(FD->getASTContext().getSourceManager());
-
-            int firstColonInEnd = FDLocEnd.find(":");
-            int secondColonInEnd = FDLocEnd.find(":", firstColonInEnd + 1);
-            std::string locLinesInEnd = FDLocEnd.substr(
-                    firstColonInEnd + 1, secondColonInEnd - firstColonInEnd - 1);
-            int endLine = std::stoi(locLinesInEnd);
+            std::string fileName;
+            int beginLine, endLine;
+            getDeclarationLocation(static_cast<const Decl*>(FD), fileName, beginLine, endLine);
             FunctionLoc FDLoc(FD, fileName, beginLine, endLine);
 
             saveFuncLocInfo(FDLoc);
@@ -205,12 +245,48 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
             // 获得函数体
             if (FD->hasBody() && F->getFunctionType() == ASTFunction::NormalFunction) {
                 cJSON *fj = cJSON_CreateObject();
-                cJSON_AddStringToObject(fj, "beginLine", locLinesInBegin.c_str());
-                cJSON_AddStringToObject(fj, "endLine", locLinesInEnd.c_str());
+                cJSON_AddNumberToObject(fj, "beginLine", beginLine);
+                cJSON_AddNumberToObject(fj, "endLine", endLine);
                 cJSON_AddStringToObject(fj, "filename", fileName.c_str());
-                cJSON_AddItemToObject(functions_json, name.c_str(), fj);
+                cJSON_AddBoolToObject(fj, "visible", isFunctionInner(FD));
+                cJSON_AddItemToObject(functions_json, common::getPrettyName(FD).c_str(), fj);
             }
         }
+
+        std::vector < CXXRecordDecl * > records = common::getRecords(AU->getASTContext());
+        for(CXXRecordDecl *decl: records){
+            std::string name = decl->getQualifiedNameAsString();
+            cJSON *rj = cJSON_CreateObject();
+            std::string fileName;
+            int beginLine, endLine;
+            getDeclarationLocation(static_cast<const Decl*>(decl), fileName, beginLine, endLine);
+            cJSON_AddStringToObject(rj, "filename", fileName.c_str());
+            cJSON_AddNumberToObject(rj, "beginLine", beginLine);
+            cJSON_AddNumberToObject(rj, "endLine", endLine);
+	        cJSON * methodsArray = cJSON_CreateArray();
+	        cJSON * fieldsArray = cJSON_CreateArray();
+            // 遍历类的方法
+            for(auto method: decl->methods()){
+                std::string methodName = common::getPrettyName(method);
+                cJSON *mj = cJSON_CreateObject();
+                cJSON_AddStringToObject(mj, "name", methodName.c_str());
+                cJSON_AddStringToObject(mj, "access", accessToString(method->getAccess()).c_str());
+                cJSON_AddItemToArray(methodsArray, mj);
+            }
+            // 遍历类的成员变量
+            for(auto field: decl->fields()){
+                cJSON *fj = cJSON_CreateObject();
+                cJSON_AddStringToObject(fj, "name", field->getNameAsString().c_str());
+                cJSON_AddStringToObject(fj, "type", field->getType().getAsString().c_str());
+                cJSON_AddStringToObject(fj, "access", accessToString(field->getAccess()).c_str());
+                cJSON_AddItemToArray(fieldsArray, fj);
+            }
+            cJSON_AddItemToObject(rj, "methods", methodsArray);
+            cJSON_AddItemToObject(rj, "fields", fieldsArray);
+            cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
+            cJSON_AddItemToObject(records_json, name.c_str(), rj);
+        }
+
         loadASTUnit(std::move(AU));
         i++;
         process_bar(float(i) / astNum);
@@ -218,6 +294,8 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
 
     std::ofstream functions_file("functions.json");
     functions_file << cJSON_Print(functions_json);
+    std::ofstream records_file("records.json");
+    records_file << cJSON_Print(records_json);
 
     resource.buildUseFunctions();
 }

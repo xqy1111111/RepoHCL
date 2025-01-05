@@ -38,6 +38,7 @@ std::string getLambdaName(FunctionDecl *FD);
 
 std::unique_ptr<ASTUnit> loadFromASTFile(std::string AST);
 
+std::vector<CXXRecordDecl *> getRecords(ASTContext &Context);
 std::vector<FunctionDecl *> getFunctions(ASTContext &Context);
 std::vector<FunctionDecl *> getFunctions(ASTContext &Context,
                                          SourceLocation SL);
@@ -62,6 +63,8 @@ std::vector<FunctionDecl *> getCalledLambda(FunctionDecl *FD);
 std::vector<CallExpr *> getCallExpr(FunctionDecl *FD);
 
 std::string getFullName(FunctionDecl *FD);
+
+std::string getPrettyName(FunctionDecl *FD);
 
 void printLog(std::string, CheckerName cn, int level, Config &c);
 

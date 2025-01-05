@@ -33,7 +33,7 @@
 └── README.md                  
 ```
 ### 使用说明
-- 项目基于OpenAI协议调用LLM，需在settings.py中设置调用的LLM服务的域名、模型、温度，并配置环境变量OPENAI_API_KEY作为密钥。默认采用阿里百炼。
+- 项目基于OpenAI协议调用LLM，需在settings.py中设置调用的LLM服务的域名、模型、温度，并配置环境变量`OPENAI_API_KEY`作为密钥。默认采用阿里百炼。
 
 - 目前提供了docker/dockerfile.cg_python，可以对项目Vanguard-V2-StaticChecker进行一次完整的分析。本地运行依赖可参考该dockerfile。
 

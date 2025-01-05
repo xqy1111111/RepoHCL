@@ -14,7 +14,7 @@ using namespace std;
 
 namespace {
 
-class ASTFunctionLoad : public ASTConsumer,
+    class ASTFunctionLoad : public ASTConsumer,
                         public RecursiveASTVisitor<ASTFunctionLoad> {
 public:
   void HandleTranslationUnit(ASTContext &Context) override {
@@ -103,6 +103,28 @@ private:
   std::vector<FunctionDecl *> functions;
   SourceLocation AULoc;
 };
+
+class ASTRecordLoad : public ASTConsumer,
+                        public RecursiveASTVisitor<ASTRecordLoad> {
+public:
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TraverseDecl(Context.getTranslationUnitDecl());
+  }
+
+  // Implement the RecursiveASTVisitor interface to visit C++ classes.
+  bool VisitCXXRecordDecl(CXXRecordDecl *decl) {
+    if (decl->isThisDeclarationADefinition()) {
+     records.push_back(decl);
+    }
+    return true;
+  }
+
+  const std::vector<CXXRecordDecl *> &getRecords() const { return records; }
+
+private:
+  std::vector<CXXRecordDecl *> records;
+};
+
 
 class ASTVariableLoad : public RecursiveASTVisitor<ASTVariableLoad> {
 public:
@@ -721,6 +743,12 @@ std::unique_ptr<ASTUnit> loadFromASTFile(std::string AST) {
                                ASTUnit::LoadEverything, Diags, FileSystemOpts));
 }
 
+std::vector<CXXRecordDecl *> getRecords(ASTContext &Context) {
+  ASTRecordLoad load;
+  load.HandleTranslationUnit(Context);
+  return load.getRecords();
+}
+
 /**
  * get all functions's decl from an ast context.
  */
@@ -863,7 +891,23 @@ std::string getFullName(FunctionDecl *FD) {
   name = strhelper::trim(name + " " + getParams(FD));
   return name;
 }
-} // end of namespace common
+
+std::string getPrettyName(FunctionDecl *FD) {
+  std::string name = FD->getQualifiedNameAsString() + "(";
+  //对于无参数的函数，避免其fullname后出现不必要的空格
+  for (auto param = FD->param_begin(); param != FD->param_end(); param++) {
+    name = name + (*param)->getOriginalType().getAsString() + " " + (*param)->getNameAsString() + ", ";
+  }
+  if(!FD->param_empty()){
+    name.resize(name.size() - 2);
+  }
+  name = name + ")";
+  //填入返回值类型
+  name = FD->getReturnType().getAsString() + " " + name;
+  return strhelper::trim(name);
+}
+
+}// end of namespace common
 
 std::vector<std::string> initialize(std::string astList) {
   std::vector<std::string> astFiles;
