@@ -1,5 +1,7 @@
 import os
 
+from loguru import logger
+
 from llm_helper import SimpleLLM
 from prompt import structure_trimmer
 from settings import SettingsManager
@@ -8,10 +10,16 @@ from settings import SettingsManager
 class ProjectManager:
     def __init__(self, repo_path):
         self._repo_path = repo_path
+        self._root = os.path.basename(self._repo_path)
         self._setting = SettingsManager.get_setting()
         self._llm = SimpleLLM(self._setting)
         self._structure = self._traverse(self._repo_path)
+        logger.info('origin structure of {} is \n{}'.format(self._repo_path, "\n".join(self._structure)))
         self._trim()
+        logger.info(f'trim structure of {self._repo_path} is \n{self._structure}')
+
+    def root(self):
+        return self._root
 
     def get_project_structure(self) -> str:
         return self._structure
@@ -40,11 +48,9 @@ class ProjectManager:
     def _trim(self):
         messages = [
             {'role': 'system', 'content': structure_trimmer},
-            {'role': 'user', 'content': f'['
-                                        f'{self._structure}'
-                                        f']'}
+            {'role': 'user', 'content': '\n'.join(self._structure)}
         ]
-        self._structure = self._llm.ask(messages)
+        self._structure = self._llm.ask(messages).strip('[]\n')
 
 
 if __name__ == "__main__":

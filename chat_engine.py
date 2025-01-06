@@ -1,5 +1,4 @@
 import os
-import sys
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -58,7 +57,7 @@ class ChatEngine(ABC):
         )
 
         # debug
-        f = f'docs/{doc_item.file}.prompt.md'
+        f = f'docs/{self.project.root()}/{doc_item.file}.{doc_item.doc_type()}.prompt.md'
         os.makedirs(os.path.dirname(f), exist_ok=True)
         with open(f, 'a') as c:
             c.write((
@@ -80,7 +79,8 @@ class ChatEngine(ABC):
             messages = self.build_prompt(doc_item)
             md = self._llm.ask(messages)
             md += f'''
-**Code**:
+        
+**Code**
 ```C++
 {doc_item.code}
 ```
@@ -97,7 +97,7 @@ class FunctionEngine(ChatEngine):
             return ''
         prompt = 'As you can see, the code calls the following objects, their docs and code are as following:\n\n'
         for reference_item in doc_item.reference_who:
-            prompt += f'**Obj**: `{reference_item.name}`\n\n' + '**Document**:\n\n' + '\n'.join(
+            prompt += f'**Function**: `{reference_item.name}`\n\n' + '**Document**:\n\n' + '\n'.join(
                 list(map(lambda t: '> ' + t, reference_item.md_content.split('\n')))) + '\n---\n'
         return prompt
 
@@ -131,8 +131,8 @@ class FunctionEngine(ChatEngine):
     def _get_example(self, doc_item: DocItem):
         return ("> ```C++\n" +
                 "> (mock possible usage examples of this Function with codes.)"
-                ) + 'You can refer to the use of this Function in the caller.' if len(
-            doc_item.who_reference_me) else '' + '> ```\n'
+                ) + ('You can refer to the use of this Function in the caller.' if len(
+            doc_item.who_reference_me) else '') + '\n> ```\n'
 
     def _get_code(self, doc_item: DocItem):
         return ("The code of the Function is as follows:\n"

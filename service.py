@@ -1,32 +1,22 @@
 import json
 import os.path
-import re
-import sys
 import time
 import uuid
 from enum import Enum
-from typing import Optional, List
+from typing import Optional
 
 import requests
 from fastapi import FastAPI, BackgroundTasks
 from loguru import logger
 from pydantic import BaseModel
 
+from doc import APINote, ClassNote, ModuleNote
 from file_helper import resolve_archive
-from main import run, get_extern_functions
+from main import run
 from settings import SettingsManager
 
 app = FastAPI()
 settings = SettingsManager.get_setting()
-
-
-class APINote(BaseModel):
-    note: Optional[str]
-    name: str
-    parameters: Optional[str]
-    description: str
-    detail: str
-    example: Optional[str]
 
 
 class RATask(BaseModel):
@@ -84,42 +74,27 @@ def test2():
     return 'hello'
 
 
-# 使用正则表达式提取所有函数信息
-def extract_all_functions_info(text) -> List[APINote]:
-    function_pattern = re.compile(r'###(.*?)\n(.*?)\n(.*?)(###|\Z)', re.DOTALL)
-    res: List[APINote] = []
-    for match in function_pattern.finditer(text):
-        function_block = match.group(3) + match.group(4)
-        parameters = ''
-        note = ''
-        name = match.group(1).strip(':\n ')
-        description = match.group(2).strip(':\n ')
-        parameter_matches = re.search(r'\*\*Parameter\*\*(.*?)\*\*', function_block, re.DOTALL)
-        if parameter_matches:
-            parameters = parameter_matches.group(1).strip(':\n ')
-        code_description_match = re.search(r'\*\*Code Description\*\*(.*?)\*\*', function_block, re.DOTALL)
-        code_description = code_description_match.group(1).strip()
-        note_match = re.search(r'\*\*Note\*\*(.*)\*\*', function_block, re.DOTALL)
-        if note_match:
-            note = note_match.group(1).strip(':\n ')
-        output_example_match = re.search(r'\*\*Output Example\*\*(.*?)(\*\*|###)', function_block, re.DOTALL)
-        output_example = output_example_match.group(1).strip(':\n ')
-        res.append(APINote(name=name, parameters=parameters, description=description,
-                           example=output_example, detail=code_description, note=note))
-    return res
-
-
 def run_with_response(path: str, req: RATask):
     try:
         run(path)
         doc_path = f'docs/{path}'
-        data: List[APINote] = []
+        data = {'functions': [], 'classes': [], 'modules': []}
         for f in os.listdir(doc_path):
             if '.prompt.' in f:
                 continue
             with open(f'{doc_path}/{f}', 'r') as fr:
-                data.extend(extract_all_functions_info(fr.read()))
-        data = list(map(lambda n: n.model_dump(exclude_none=True, exclude_unset=True), data))
+                if '.function.' in f:
+                    data['functions'].extend(APINote.from_doc(fr.read()))
+                elif '.class.' in f:
+                    data['classes'].extend(ClassNote.from_doc(fr.read()))
+                elif 'modules.' in f:
+                    data['modules'].extend(ModuleNote.from_doc(fr.read()))
+        data['functions'] = list(
+            map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['functions']))
+        data['classes'] = list(
+            map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['classes']))
+        data['modules'] = list(
+            map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['modules']))
         # 回调传结果，重试几次
         retry = 5
         while retry > 0:
@@ -145,4 +120,4 @@ def run_with_response(path: str, req: RATask):
                       headers={'Content-Type': 'application/json'})
 
 
-# run_with_response('libxml', RATask(id='8', callback='127.0.0.1:4000/tools/callback', repo='1'))
+# run_with_response('md5', RATask(id='8', callback='127.0.0.1:8000/tools/callback', repo='1'))

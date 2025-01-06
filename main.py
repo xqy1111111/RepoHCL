@@ -3,7 +3,6 @@ import os.path
 import re
 import shutil
 import subprocess
-import sys
 import threading
 from collections import defaultdict
 from itertools import islice
@@ -16,10 +15,10 @@ from loguru import logger
 
 from ast_generator import gen_sh
 from chat_engine import ClassEngine, FunctionEngine
-from doc import FunctionItem, DocItem, ClassItem
+from doc import FunctionItem, DocItem, ClassItem, ModuleNote
 from llm_helper import SimpleLLM
 from project_manager import ProjectManager
-from prompt import modules_summarize_prompt
+from prompt import modules_summarize_prompt, modules_enhance_prompt
 from settings import SettingsManager
 
 
@@ -47,29 +46,28 @@ def make(path: str, output: str):
     cmd(f'lib/cge {path}/astList.txt', path='.')
     os.makedirs(output, exist_ok=True)
     shutil.move('functions.json', output)
+    shutil.move('records.json', output)
     shutil.move('cg.dot', output)
 
 
 # 读取函数列表
-def read_functions(path: str) -> Dict[str, Dict]:
+def read_functions(path: str, resource_path: str) -> Dict[str, Dict]:
     # 调整functions.json
     with open(f'{path}/functions.json', 'r') as f:
         functions = json.loads(f.read())
         to_remove = []
         for k, v in functions.items():
-            file = v.get('filename')
+            file: str = v.get('filename')
             # 不是绝对路径说明已经处理过了，跳过
             if not file.startswith('/'):
                 continue
             # 仅保留resource下的文件
-            if not file.startswith('/root/'):
+            i = file.find(resource_path)
+            if i == -1:
                 to_remove.append(k)
                 continue
-            # file = file.replace('/root/', 'resource/')
-            # 转相对路径
-            file = os.path.relpath(file)
-            # functions中去除路径前缀
-            v['filename'] = file[9:] if file.startswith('resource/') else file
+            v['filename'] = file[i + len(resource_path) + 1:]
+            # file = file.replace('/root/', '')
             with open(file, 'r') as code:
                 lines = list(islice(code, int(v.get('beginLine')) - 1, int(v.get('endLine'))))
                 v.setdefault('code', ''.join(lines).strip())
@@ -81,8 +79,8 @@ def read_functions(path: str) -> Dict[str, Dict]:
 
 
 # 读取类列表
-def read_records(path: str) -> Dict[str, Dict]:
-    functions = read_functions(path)
+def read_records(path: str, resource_path: str) -> Dict[str, Dict]:
+    functions = read_functions(path, resource_path)
     with open(f'{path}/records.json', 'r') as f:
         records = json.loads(f.read())
         to_remove = []
@@ -92,13 +90,13 @@ def read_records(path: str) -> Dict[str, Dict]:
             if not file.startswith('/'):
                 continue
             # 仅保留resource下的文件
-            if not file.startswith('/root/'):
+            # 仅保留resource下的文件
+            i = file.find(resource_path)
+            if i == -1:
                 to_remove.append(k)
                 continue
-            # 转相对路径
-            # file = file.replace('/root/', 'resource/')
-            file = os.path.relpath(file)
-            v['filename'] = file[9:] if file.startswith('resource/') else file
+            v['filename'] = file[i + len(resource_path):]
+            # file = file.replace('/root/', '')
             # 查找类的方法对应的实现
             methods = []
             for m in v['methods']:
@@ -119,14 +117,14 @@ def read_records(path: str) -> Dict[str, Dict]:
 
 
 # 筛选外部可见的函数
-def read_extern_functions(path: str) -> Dict[str, Dict]:
-    functions = read_functions(path=path)
+def read_extern_functions(path: str, resource_path: str) -> Dict[str, Dict]:
+    functions = read_functions(path, resource_path)
     to_analyze = set(functions.keys())
-    callgraph = read_callgraph(path, to_analyze)
-    zero_indegree_nodes = set(node for node in callgraph.nodes if callgraph.in_degree[node] == 0)
+    # callgraph = read_callgraph(path, to_analyze)
+    # zero_indegree_nodes = set(node for node in callgraph.nodes if callgraph.in_degree[node] == 0)
     extern_functions = {}
     for k, v in functions.items():
-        if bool(v.get('visible')) and k in zero_indegree_nodes:
+        if bool(v.get('visible')):
             extern_functions[k] = v
     return extern_functions
 
@@ -196,7 +194,7 @@ def get_doc_manager() -> Dict[str, DocItem]:
 
 # 为函数生成文档
 def gen_doc_for_functions(output_path: str, resource_path: str, doc_path: str):
-    functions = read_functions(output_path)
+    functions = read_functions(output_path, resource_path)
     to_analyze = set(functions.keys())
     callgraph = read_callgraph(output_path, to_analyze)
     # 拓扑排序callgraph，排除不需要分析的函数
@@ -252,7 +250,7 @@ def _simplify_functions_md(content: str) -> str:
 
 # 为类生成文档
 def gen_doc_for_classes(output_path: str, resource_path: str, doc_path: str):
-    records = read_records(output_path)
+    records = read_records(output_path, resource_path)
     logger.info(f'gen doc for classes, class count: {len(records)}')
     ce = ClassEngine(ProjectManager(repo_path=resource_path))
     i = 0
@@ -312,35 +310,59 @@ def gen_doc_for_classes(output_path: str, resource_path: str, doc_path: str):
         i += 1
 
 
+def extract_all_modules(doc_path):
+    pass
+
+
 def gen_doc_for_modules(output_path: str, resource_path: str, doc_path: str):
-    apis = read_extern_functions(output_path)
+    apis = read_extern_functions(output_path, resource_path)
     logger.info(f'gen doc for modules, apis count: {len(apis)}')
     api_docs = ''
-    for name, v in apis:
+    for name, v in apis.items():
         method_item = FunctionItem()
         method_item.name = name
         method_item.file = v.get('filename')
         if method_item.imports(doc_path):
             desc = _simplify_functions_md(method_item.md_content)
+            apis[name]['desc'] = desc
             api_docs += (f'- {name}\n'
                          f' > {desc}\n')
         else:
             logger.error(f'fail to load method {method_item.name}')
     prompt = modules_summarize_prompt.format(language='English', function_list=api_docs)
-    logger.debug(prompt)
     llm = SimpleLLM(SettingsManager.get_setting())
     res = llm.ask([{'role': 'system', 'content': prompt}])
-    logger.debug(res)
+    with open(f'{doc_path}/modules.prompt.md', 'w') as f:
+        f.write('### Summary\n' + prompt)
+    module_doc = []
+    modules = ModuleNote.from_doc(res)
+    logger.info(f'gen doc for modules, modules count: {len(modules)}')
+    i = 0
+    for m in modules:
+        m.functions = '\n'.join(
+            list(map(lambda x: x + f'\n\n  {apis[x.strip("- ")].get("desc")}\n', m.functions.split('\n'))))
+        prompt2 = modules_enhance_prompt.format(language='English', module_doc='\n'.join(
+            list(map(lambda k: '> ' + k, m.to_md().split('\n')))))
+        with open(f'{doc_path}/modules.prompt.md', 'a') as f:
+            f.write(f'### {m.name}\n' + prompt2)
+        res = llm.ask([{'role': 'system', 'content': prompt2}])
+        m.example = res
+        module_doc.append(m.to_md())
+        i += 1
+        logger.info(f'gen doc for modules {i}: {m.name}')
+    with open(f'{doc_path}/modules.md', 'w') as f:
+        f.write('\n'.join(module_doc))
 
 
 # export OPENAI_API_KEY={KEY}
 def run(path: str):
     resource_path = f'resource/{path}'
     output_path = f'output/{path}'
-    doc_path = 'docs'
+    doc_path = f'docs/{path}'
     make(resource_path, output_path)
     gen_doc_for_functions(output_path, resource_path, doc_path)
     gen_doc_for_classes(output_path, resource_path, doc_path)
+    gen_doc_for_modules(output_path, resource_path, doc_path)
     shutil.rmtree(resource_path)
     shutil.rmtree(output_path)
 
@@ -356,4 +378,4 @@ def main(path):
 
 
 if __name__ == '__main__':
-    main()
+    main('Vanguard-V2-StaticChecker')
