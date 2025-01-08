@@ -25,4 +25,6 @@ RUN mv Vanguard-V2-StaticChecker vanguard && python3 main.py vanguard
 
 # gitbook port 4000
 
-RUN gitbook init docs/vanguard && gitbook serve docs/vanguard
+RUN gitbook init docs/vanguard
+
+CMD ["gitbook", "serve", "docs/vanguard"]

@@ -79,16 +79,17 @@ def run_with_response(path: str, req: RATask):
         run(path)
         doc_path = f'docs/{path}'
         data = {'functions': [], 'classes': [], 'modules': []}
-        for f in os.listdir(doc_path):
-            if '.prompt.' in f:
-                continue
-            with open(f'{doc_path}/{f}', 'r') as fr:
-                if '.function.' in f:
-                    data['functions'].extend(APINote.from_doc(fr.read()))
-                elif '.class.' in f:
-                    data['classes'].extend(ClassNote.from_doc(fr.read()))
-                elif 'modules.' in f:
-                    data['modules'].extend(ModuleNote.from_doc(fr.read()))
+        for root, _, files in os.walk(doc_path):
+            for f in files:
+                if '.prompt.' in f:
+                    continue
+                with open(f'{root}/{f}', 'r') as fr:
+                    if '.function.' in f:
+                        data['functions'].extend(APINote.from_doc(fr.read()))
+                    elif '.class.' in f:
+                        data['classes'].extend(ClassNote.from_doc(fr.read()))
+                    elif 'modules.' in f:
+                        data['modules'].extend(ModuleNote.from_doc(fr.read()))
         data['functions'] = list(
             map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['functions']))
         data['classes'] = list(

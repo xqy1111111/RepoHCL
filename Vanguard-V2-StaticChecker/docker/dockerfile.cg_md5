@@ -5,7 +5,7 @@ ENV CXX=clang++-9
 
 WORKDIR /root/resource
 
-RUN wget https://github.com/talent518/md5/archive/refs/heads/master.zip && unzip md5-master.zip && mv md5-master md5
+RUN wget https://github.com/talent518/md5/archive/refs/heads/master.zip && unzip master.zip && mv md5-master md5
 
 WORKDIR /root/resource/md5
 

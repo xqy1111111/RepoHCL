@@ -93,7 +93,7 @@ class SymbolNote(BaseModel):
 
     @classmethod
     def from_doc(cls, s: str) -> List[SymbolNote]:
-        function_pattern = re.compile(r'(###.*?)(###|\Z)', re.DOTALL)
+        function_pattern = re.compile(r'(###.*?)(?=###|\Z)', re.DOTALL)
         res: List[SymbolNote] = []
         for match in function_pattern.finditer(s):
             res.append(cls.from_chapter(match.group(1)))
@@ -101,13 +101,13 @@ class SymbolNote(BaseModel):
 
     @classmethod
     def from_chapter(cls, s: str):
-        module_pattern = re.search(r'### (.*?)\n(.*?)\n(.*?)(###|\Z)', s, re.DOTALL)
+        module_pattern = re.search(r'### (.*?)\n(.*?)\n(.*?)(?=###|\Z)', s, re.DOTALL)
         block = module_pattern.group(3)
         name = module_pattern.group(1).strip()
         description = module_pattern.group(2).strip()
         detail_match = re.search(r'\*\*Code Details\*\*(.*?)\*\*', block, re.DOTALL)
         details = detail_match.group(1).strip()
-        output_example_match = re.search(r'\*\*Example\*\*(.*?)(\*\*|\Z)', block, re.DOTALL)
+        output_example_match = re.search(r'\*\*Example\*\*(.*?)(?=\*\*|\Z)', block, re.DOTALL)
         output_example = output_example_match.group(1).strip()
         return SymbolNote(name=name, description=description,
                           example=output_example, detail=details)
@@ -119,7 +119,7 @@ class APINote(SymbolNote):
     @classmethod
     def from_chapter(cls, s: str) -> APINote:
         n = SymbolNote.from_chapter(s)
-        module_pattern = re.search(r'### (.*?)\n(.*?)\n(.*?)(###|\Z)', s, re.DOTALL)
+        module_pattern = re.search(r'### (.*?)\n(.*?)\n(.*?)(?=###|\Z)', s, re.DOTALL)
         block = module_pattern.group(3)
         parameter_matches = re.search(r'\*\*Parameters\*\*(.*?)\*\*', block, re.DOTALL)
         return APINote(name=n.name, description=n.description, detail=n.detail, example=n.example,
@@ -132,7 +132,7 @@ class ClassNote(SymbolNote):
     @classmethod
     def from_chapter(cls, s: str) -> ClassNote:
         n: SymbolNote = SymbolNote.from_chapter(s)
-        module_pattern = re.search(r'### (.*?)\n(.*?)\n(.*?)(###|\Z)', s, re.DOTALL)
+        module_pattern = re.search(r'### (.*?)\n(.*?)\n(.*?)(?=###|\Z)', s, re.DOTALL)
         block = module_pattern.group(3)
         attributes_matches = re.search(r'\*\*Attributes\*\*(.*?)\*\*', block, re.DOTALL)
         return ClassNote(name=n.name, description=n.description, detail=n.detail, example=n.example,
@@ -147,7 +147,7 @@ class ModuleNote(BaseModel):
 
     @classmethod
     def from_doc(cls, s: str) -> List[ModuleNote]:
-        chapter_pattern = re.compile(r'(###.*?)(###|\Z)', re.DOTALL)
+        chapter_pattern = re.compile(r'(###.*?)(?=###|\Z)', re.DOTALL)
         res: List[ModuleNote] = []
         for match in chapter_pattern.finditer(s):
             chapter = match.group(1)
@@ -156,15 +156,15 @@ class ModuleNote(BaseModel):
 
     @classmethod
     def from_chapter(cls, s: str) -> ModuleNote:
-        module_pattern = re.compile(r'### (.*?)\n(.*?)\n(.*?)(###|\Z)', re.DOTALL)
+        module_pattern = re.compile(r'### (.*?)\n(.*?)\n(.*?)(?=###|\Z)', re.DOTALL)
         match = re.search(module_pattern, s)
         n = ModuleNote()
         n.name = match.group(1).strip()
         n.description = match.group(2).strip()
         content = match.group(3)
-        function_match = re.search(r'\*\*Functions List\*\*(.*?)(\Z|\*\*)', content, re.DOTALL)
+        function_match = re.search(r'\*\*Functions List\*\*(.*?)(?=\Z|\*\*)', content, re.DOTALL)
         n.functions = function_match.group(1).strip()
-        example_match = re.search(r'\*\*Example\*\*(.*?)(\Z|\*\*)', content, re.DOTALL)
+        example_match = re.search(r'\*\*Example\*\*(.*?)(?=\Z|\*\*)', content, re.DOTALL)
         if example_match:
             n.example = example_match.group(1).strip()
         return n

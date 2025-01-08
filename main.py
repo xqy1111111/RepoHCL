@@ -165,13 +165,47 @@ def read_callgraph(path: str, nodes: Set[str] = None) -> nx.DiGraph:
     return digraph
 
 
+# 以starts为起点进行多源BFS，测试减小callgraph规模
+def sample_callgraph(starts: List[str], callgraph: nx.DiGraph) -> nx.DiGraph:
+    q = list(starts)
+    v = set()
+    ng = nx.DiGraph()
+    while len(q):
+        s = q.pop(0)
+        v.add(s)
+        for t in callgraph.successors(s):
+            if t not in v:
+                q.append(t)
+                ng.add_edge(s, t)
+    logger.info(f'sample callgraph: {len(callgraph.nodes)} -> {len(ng.nodes)}, starts: {starts}')
+
+    todoset = set(ng.nodes)
+    # 增加一些利用已有函数可以覆盖的函数
+    for s in callgraph.nodes:
+        if s not in todoset and len(set(callgraph.successors(s))) > 0 and set(callgraph.successors(s)).issubset(todoset):
+            for t in callgraph.successors(s):
+                ng.add_edge(s, t)
+    # if len(starts) > 1:
+    #     for s in starts:
+    #         sample_callgraph([s], callgraph)
+    logger.info(f'sample callgraph: {len(callgraph.nodes)} -> {len(ng.nodes)}, starts: {starts}')
+    return ng
+
+
 def response_with_gitbook(doc_path):
+    def summary_sort(s: str):
+        # 模块摘要优先级最高
+        if 'modules.md' in s or 'cares.md' in s:
+            return 1, s.lower()
+        else:
+            # 如果字符串不符合任何条件，给予最低优先级
+            return 4, s.lower()
     summary = '# Summary\n'
     for root, _, files in os.walk(doc_path):
         root = root[len(doc_path) + 1:]
         if len(root) > 0:
             summary += f'{(len(root.split("/")) - 1) * "  "}* [{root}]\n'
-        for f in files:
+        for f in sorted(files, key=summary_sort):
             if '.prompt' not in f:
                 if len(root) > 0:
                     summary += f'{len(root.split("/")) * "  "}* [{f[:-3]}]({root}/{f})\n'
@@ -207,8 +241,6 @@ def gen_doc_for_functions(output_path: str, resource_path: str, doc_path: str):
         f = sorted_functions[i]
         doc_item = FunctionItem()
         doc_item.name = f
-        if f not in to_analyze:
-            continue
         doc_item.code = functions.get(f).get('code')
         doc_item.file = functions.get(f).get('filename')
         doc_item.has_return = True
@@ -228,8 +260,6 @@ def gen_doc_for_functions(output_path: str, resource_path: str, doc_path: str):
         else:
             logger.info(f'load {doc_item.name}: {i + 1}/{len(sorted_functions)}')
         doc_manager[f] = doc_item
-    # 生成gitbook所需文档
-    response_with_gitbook(doc_path)
     # 后置清理
     del threadlocal.doc_manager
 
@@ -310,10 +340,6 @@ def gen_doc_for_classes(output_path: str, resource_path: str, doc_path: str):
         i += 1
 
 
-def extract_all_modules(doc_path):
-    pass
-
-
 def gen_doc_for_modules(output_path: str, resource_path: str, doc_path: str):
     apis = read_extern_functions(output_path, resource_path)
     logger.info(f'gen doc for modules, apis count: {len(apis)}')
@@ -372,10 +398,12 @@ def run(path: str):
 def main(path):
     path = click.format_filename(path).strip('/')
     basename = os.path.basename(path)
+    print(path, basename)
     # 移动到工作路径
     shutil.copytree(path, f'resource/{basename}', dirs_exist_ok=True)
     run(basename)
-
+    # 生成gitbook所需文档
+    response_with_gitbook(f'docs/{basename}')
 
 if __name__ == '__main__':
-    main('Vanguard-V2-StaticChecker')
+    main()

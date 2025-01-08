@@ -14,7 +14,7 @@ doc_generation_instruction = (
     "Please write out the function of this {code_type_tell} in bold plain text, followed by a detailed analysis in plain text "
     "(including all details), in language {language} to serve as the documentation for this part of the code.\n\n"
     "The standard format is as follows:\n\n"
-    "> ### {code_name}\n"
+    # "> ### {code_name}\n"
     "> The function of {code_name} is XXX. (Only code name and one sentence function description are required)\n>\n"
     "{parameters_note}"
     "> **Code Details**\n"
@@ -96,7 +96,7 @@ Please Note:
 - Use the full function name with the return type and parameters, not the abbreviation.
 - Try to put every function into at least one module unless the function is really useless.
 
-Now a list of function descriptions are provided as follow, you can start working.
+Now a list of function descriptions are provided as follows, you can start working.
 {function_list}
 '''
 

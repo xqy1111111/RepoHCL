@@ -1,4 +1,5 @@
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -78,6 +79,12 @@ class ChatEngine(ABC):
         try:
             messages = self.build_prompt(doc_item)
             md = self._llm.ask(messages)
+            md = f'### {doc_item.name}\n' + md
+            # title = re.search(md, '(###.*?\n)')
+            # if title:
+            #     title_s = title.group(1).strip()
+            #     if title_s != f'### {doc_item.name}':
+            #         md = md.replace(title_s, f'### {doc_item.name}')
             md += f'''
         
 **Code**
