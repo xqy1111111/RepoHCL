@@ -3,6 +3,7 @@ import os.path
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from collections import defaultdict
 from itertools import islice
@@ -16,9 +17,10 @@ from loguru import logger
 from ast_generator import gen_sh
 from chat_engine import ClassEngine, FunctionEngine
 from doc import FunctionItem, DocItem, ClassItem, ModuleNote
-from llm_helper import SimpleLLM
+from llm_helper import SimpleLLM, ToolsLLM
 from project_manager import ProjectManager
-from prompt import modules_summarize_prompt, modules_enhance_prompt
+from prompt import modules_summarize_prompt, modules_enhance_prompt, repo_summarize_prompt, competitors_prompt, \
+    competitors_prompt2, questions_prompt, qa_prompt
 from settings import SettingsManager
 
 
@@ -182,7 +184,8 @@ def sample_callgraph(starts: List[str], callgraph: nx.DiGraph) -> nx.DiGraph:
     todoset = set(ng.nodes)
     # 增加一些利用已有函数可以覆盖的函数
     for s in callgraph.nodes:
-        if s not in todoset and len(set(callgraph.successors(s))) > 0 and set(callgraph.successors(s)).issubset(todoset):
+        if s not in todoset and len(set(callgraph.successors(s))) > 0 and set(callgraph.successors(s)).issubset(
+                todoset):
             for t in callgraph.successors(s):
                 ng.add_edge(s, t)
     # if len(starts) > 1:
@@ -200,6 +203,7 @@ def response_with_gitbook(doc_path):
         else:
             # 如果字符串不符合任何条件，给予最低优先级
             return 4, s.lower()
+
     summary = '# Summary\n'
     for root, _, files in os.walk(doc_path):
         root = root[len(doc_path) + 1:]
@@ -367,8 +371,7 @@ def gen_doc_for_modules(output_path: str, resource_path: str, doc_path: str):
     for m in modules:
         m.functions = '\n'.join(
             list(map(lambda x: x + f'\n\n  {apis[x.strip("- ")].get("desc")}\n', m.functions.split('\n'))))
-        prompt2 = modules_enhance_prompt.format(language='English', module_doc='\n'.join(
-            list(map(lambda k: '> ' + k, m.to_md().split('\n')))))
+        prompt2 = modules_enhance_prompt.format(language='English', module_doc=prefix_with(m.to_md(), '> '))
         with open(f'{doc_path}/modules.prompt.md', 'a') as f:
             f.write(f'### {m.name}\n' + prompt2)
         res = llm.ask([{'role': 'system', 'content': prompt2}])
@@ -378,6 +381,88 @@ def gen_doc_for_modules(output_path: str, resource_path: str, doc_path: str):
         logger.info(f'gen doc for modules {i}: {m.name}')
     with open(f'{doc_path}/modules.md', 'w') as f:
         f.write('\n'.join(module_doc))
+
+
+def prefix_with(s: str, p: str) -> str:
+    return '\n'.join(list(map(lambda k: p + k, s.split('\n'))))
+
+
+def gen_doc_for_repo(output_path: str, resource_path: str, doc_path: str):
+    # 基于模块文档生成repo文档
+    with open(f'{doc_path}/modules.md', 'r') as f:
+        modules = ModuleNote.from_doc(f.read())
+        logger.info(f'gen doc for repo, modules count: {len(modules)}')
+        modules_doc = ''
+        for m in modules:
+            m.example = ''
+            modules_doc += m.to_md() + '\n\n--- \n\n'
+    modules_doc = prefix_with(modules_doc, '> ')
+    prompt = repo_summarize_prompt.format(language='English', modules_doc=modules_doc)
+    with open(f'{doc_path}/repo.prompt.md', 'w') as f:
+        f.write(prompt)
+    llm = SimpleLLM(SettingsManager.get_setting())
+    repo_doc = llm.ask([{'role': 'system', 'content': prompt}])
+    with open(f'{doc_path}/repo2.md', 'w') as f:
+        f.write(repo_doc)
+    # 基于repo文档提出相关问题
+    prompt2 = questions_prompt.format(language='English', repo_doc=repo_doc)
+    with open(f'{doc_path}/questions.prompt.md', 'w') as f:
+        f.write(prompt)
+    questions_doc = llm.ask([{'role': 'system', 'content': prompt2}])
+    with open(f'{doc_path}/questions.md', 'w') as f:
+        f.write(questions_doc)
+    # 提取问题
+    question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
+    questions = []
+    for match in question_pattern.finditer(questions_doc):
+        q = match.group(1)
+        a = match.group(2)
+        questions.append(f'Background: {a}\nQuestion: {q}')
+        print(q, a)
+    apis = read_extern_functions(output_path, resource_path)
+    functions_md = {}
+    for name, v in apis.items():
+        method_item = FunctionItem()
+        method_item.name = name
+        method_item.file = v.get('filename')
+        if method_item.imports(doc_path):
+            functions_md[name] = method_item.md_content
+
+    def read_functions_md(name: str):
+        return functions_md[name]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_functions_md",
+                "description": "Useful when you need to know the details of a function.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "whole name of the Function with arguments and return type",
+                        }
+                    },
+                    "required": ["name"]
+                }
+            }
+        }
+    ]
+    tools_map = {'read_functions_md': read_functions_md}
+    with open(f'{doc_path}/repo2.md', 'a') as f:
+        f.write('\n### QA\n')
+    # 回答每个问题
+    toolLLM = ToolsLLM(SettingsManager.get_setting(), tools, tools_map)
+    for i in range(len(questions)):
+        q = questions[i]
+        prompt3 = qa_prompt.format(language='English', summary=prefix_with(repo_doc, '> ') + '\n' + modules_doc)
+        print(prompt3)
+        answer = toolLLM.ask([{'role': 'system', 'content': prompt3},
+                              {'role': 'user', 'content': q}])
+        with open(f'{doc_path}/repo2.md', 'a') as f:
+            f.write(f'- Q{i}: ' + q + '\n\n' + prefix_with(f'A{i}: ' + answer, '  ') + '\n')
 
 
 # export OPENAI_API_KEY={KEY}
@@ -404,6 +489,7 @@ def main(path):
     run(basename)
     # 生成gitbook所需文档
     response_with_gitbook(f'docs/{basename}')
+
 
 if __name__ == '__main__':
     main()

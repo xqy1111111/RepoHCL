@@ -1,5 +1,3 @@
-import json
-
 doc_generation_instruction = (
     "You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object. "
     "The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.\n\n"
@@ -119,4 +117,115 @@ Please Note:
 
 Here is the documentation of the module you need to enhance:
 {module_doc}
+'''
+
+repo_summarize_prompt = '''
+You are a senior software engineer. You have developed a C/C++ software. 
+Now you need to write a Github README.md in {language} file for it to help others understand your software. The format of README.md is as follows:
+
+> ## Summary
+> (A concise paragraph summarizing the software.)
+> ### Features (The main features that the software providing to users. Each feature should be described in 1~2 sentences. Don't mention specific function names. Don't make up unverified features. No more than 10.)
+> - Feature1
+> - Feature2
+> ### Topics (Keywords related to the software's intended purpose, subject area, associated middleware, or other important features. For example, `JSON`, `Machine Learning`. Sort by relevance. No more than 10.)
+> - `Topic1`
+> - `Topic2`
+
+Please Note:
+- Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
+- Strictly follow the above format for output, don't give additional headers. 
+
+Here is the documentation of main modules and apis of your software. You should refer it to write the README.md:
+{modules_doc}
+'''
+
+competitors_prompt = '''
+You are a senior software engineer. You have found a C/C++ software which meets the requirements but you don’t know if this software is the best.
+
+The software you found is summarized as follows:
+{repo_doc}
+
+Now you decide to look for similar widely used software and compare their features as reference.
+Thus, you will jump out of the knowledge blind spot, find out what other practitioners are most concerned about in this type of software and check how the software you find performs on these KEY POINTS.
+
+For example, you may find that for software focus on serialization and deserialization, compression ratio and operability are two different KEY POINTS. 
+Protobuf compresses objects into binary to achieve a better compression ratio, while JSON represents objects in a human-readable format, with a worse compression ratio but more operability. 
+You may also find that for XML serialization software, support for protocols such as XML1.0, XPath and DOM/SAX are often the KEY POINTS of concern, and different software has different levels of support for these protocols.
+
+Please find two software similar to the above software (not limited to C/C++), compare the two software in various KEY POINTS, and output a table in {language} in the following format:
+
+> | KEY POINTS | software1 | software 2 |
+> | ---- | ---- | ---- |
+> | point1 | (How software1 perform on point1) | (How software2 perform on point1. If there is no significant difference with software1, only output `the same as software1`) |
+> | point2 | (How software1 perform on point2) | (How software2 perform on point2. If there is no significant difference with software1, only output `the same as software1`)  |
+> | ... | ... | ... |
+
+Please Note:
+- Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
+- Strictly follow the above format for output. Don't output any information outside the table. The table should only contain the comparison between the two software.
+- KEY POINTS should be defined based on your understanding of these two software so you should make sure that they actually exist.
+- KEY POINTS should only focus on the functionality of the software, not on performance, documentations, community maintenance, etc. that cannot be obtained from the software source code and documentation.
+
+'''
+
+competitors_prompt2 = '''
+You are a senior software engineer. You have found a C/C++ software which meets the requirements.
+
+The software you found is summarized as follows:
+{repo_doc}
+
+You need to find two software (not limited to C/C++) that are most similar to this software and output a summary for each software using the same format as above.
+
+Please Note:
+- Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
+- Strictly follow the above format for output. Don't give additional headers. 
+- Replace the header `Software` with the name of the software.
+
+'''
+
+questions_prompt = '''
+You are a senior software engineer.
+
+Your aim is to improve a C/C++ software you developed.
+In order to find room for improvement in the software, you decide to refer to the focus of excellent software and design some questions to help you improve the software.
+
+The summary of your software is as follows:
+{repo_doc}
+
+You'd better consider the following workflow:
+1. Refer excellent software. You should find and analyze some widely-used software which provide similar functions to yours as benchmarks. 
+2. Check out the concerns. If you're working on XML serialization software, you might find different software supports different protocols like XML 1.0, XPath, and DOM/SAX. Similarly, when focusing on software designed for serialization and deserialization tasks, the format in which data is produced becomes a significant consideration. Protobuf, for example, excels in compressing objects into a binary format for superior compression ratios, whereas JSON offers a human-readable representation with greater ease of manipulation.
+3. Ask some questions. You should check that whether your software meets the above concerns so ask some questions to your software first. You may question 'What format is the software product in?'.
+4. Check the questions. You should check the questions again and make sure they are meaningful. Specifically, you should provide a basis for these questions by answering how excellent software you have found solve these questions.
+
+You should output in the following format:
+
+- Q1: (question) 
+- A1: (how software X solve the question)
+- Q2: (question)
+- ...
+
+Please Note:
+- Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
+- Strictly follow the above format for output. Don't output any information outside the question. 
+- Questions should only focus on the functionality of the software, not on performance, documentations, community maintenance, etc. that cannot be obtained from the software source code and documentation.
+- Questions are meant to guide you in improving your software, so don’t get away from the field your software work for.
+
+'''
+
+qa_prompt = '''
+You are an expert on software engineering. 
+You have found a software that meets your requirements. But you still have some questions about the software.
+Luckily, the documentation of the software is available with a document query tool.
+
+The software you found is summarized as follows:
+
+{summary}
+
+Please find the answers to the following questions based on the documentation of the software.
+
+Please Note:
+- Answer mainly in {language}. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
+- When answering a question, you should first answer the conclusion.
 '''
