@@ -113,7 +113,8 @@ You'd better consider the following workflow:
 
 Please Note:
 - Write mainly in the desired language. If necessary, you can write with some English words in the analysis and description to enhance the document's readability because you do not need to translate the function name or variable name into the target language.
-- Only output the use case. Never include any other content.  
+- Only output the use case. Never include any other content. Don't give additional headers. 
+- Output cannot exceed the code segment.
 
 Here is the documentation of the module you need to enhance:
 {module_doc}
