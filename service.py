@@ -1,5 +1,6 @@
 import json
 import os.path
+import sys
 import time
 import uuid
 from enum import Enum
@@ -78,7 +79,9 @@ def run_with_response(path: str, req: RATask):
     try:
         run(path)
         doc_path = f'docs/{path}'
-        data = {'functions': [], 'classes': [], 'modules': []}
+        data = {'functions': [],
+                # 'classes': [],
+                'modules': []}
         for root, _, files in os.walk(doc_path):
             for f in files:
                 if '.prompt.' in f:
@@ -86,16 +89,16 @@ def run_with_response(path: str, req: RATask):
                 with open(f'{root}/{f}', 'r') as fr:
                     if '.function.' in f:
                         data['functions'].extend(APINote.from_doc(fr.read()))
-                    elif '.class.' in f:
-                        data['classes'].extend(ClassNote.from_doc(fr.read()))
+                    # elif '.class.' in f:
+                    #     data['classes'].extend(ClassNote.from_doc(fr.read()))
                     elif 'modules.' in f:
                         data['modules'].extend(ModuleNote.from_doc(fr.read()))
         data['functions'] = list(
-            map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['functions']))
-        data['classes'] = list(
-            map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['classes']))
+            map(lambda x: x.dict(), data['functions']))
+        # data['classes'] = list(
+        #     map(lambda x: x.dict(), data['classes']))
         data['modules'] = list(
-            map(lambda x: x.model_dump_json(exclude_none=True, exclude_unset=True), data['modules']))
+            map(lambda x: x.dict(), data['modules']))
         # 回调传结果，重试几次
         retry = 5
         while retry > 0:

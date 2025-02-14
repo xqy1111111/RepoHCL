@@ -451,7 +451,7 @@ def gen_doc_for_repo(output_path: str, resource_path: str, doc_path: str):
         }
     ]
     tools_map = {'read_functions_md': read_functions_md}
-    with open(f'{doc_path}/repo2.md', 'a') as f:
+    with open(f'{doc_path}/repo.md', 'a') as f:
         f.write('\n### QA\n')
     # 回答每个问题
     toolLLM = ToolsLLM(SettingsManager.get_setting(), tools, tools_map)
@@ -461,7 +461,7 @@ def gen_doc_for_repo(output_path: str, resource_path: str, doc_path: str):
         print(prompt3)
         answer = toolLLM.ask([{'role': 'system', 'content': prompt3},
                               {'role': 'user', 'content': q}])
-        with open(f'{doc_path}/repo2.md', 'a') as f:
+        with open(f'{doc_path}/repo.md', 'a') as f:
             f.write(f'- Q{i}: ' + q + '\n\n' + prefix_with(f'A{i}: ' + answer, '  ') + '\n')
 
 
@@ -472,7 +472,7 @@ def run(path: str):
     doc_path = f'docs/{path}'
     make(resource_path, output_path)
     gen_doc_for_functions(output_path, resource_path, doc_path)
-    gen_doc_for_classes(output_path, resource_path, doc_path)
+    # gen_doc_for_classes(output_path, resource_path, doc_path)
     gen_doc_for_modules(output_path, resource_path, doc_path)
     shutil.rmtree(resource_path)
     shutil.rmtree(output_path)
