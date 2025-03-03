@@ -7,8 +7,6 @@ ENV CXX=clang++-9
 
 WORKDIR /root/vanguard
 
-RUN apt-get install -y python3-dev python-dev
-
 RUN cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_PREFIX=/lib/llvm-9 .
 
 RUN bear make -j`nproc`

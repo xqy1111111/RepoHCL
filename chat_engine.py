@@ -65,6 +65,7 @@ class ChatEngine(ABC):
                 f'### {doc_item.name}\n'
                 f'{system_prompt}\n'
             ))
+        print(system_prompt)
         return [
             {'role': 'system', 'content': system_prompt},
             {

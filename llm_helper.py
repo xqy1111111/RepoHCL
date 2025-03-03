@@ -32,6 +32,31 @@ class SimpleLLM:
             logger.error(f"Error in chat call: {e}")
             raise e
 
+    def debug(self, messages: List[Dict[str, str]]):
+        try:
+            response = self._llm.chat.completions.create(
+                model=self._setting.chat_completion.model,
+                messages=messages,
+                temperature=self._setting.chat_completion.temperature,
+                stream=True
+            )
+            full_content = ''
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    full_content += chunk.choices[0].delta.content
+                    print(chunk.choices[0].delta.content, end='')
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error in chat call: {e}")
+            raise e
+
+    def add_file(self, path: str) -> Dict[str, str]:
+        try:
+            response = self._llm.files.create(file=open(path, 'rb'), purpose='file-extract')
+            return {'role': 'system', 'content': f'fileid://{response.id}'}
+        except Exception as e:
+            logger.error(f"Error in add file: {e}")
+            raise e
 
 class ToolsLLM(SimpleLLM):
     def __init__(self, setting: settings.Setting, tools, tools_map):

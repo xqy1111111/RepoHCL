@@ -3,8 +3,6 @@ FROM cg
 ENV CC=clang-9
 ENV CXX=clang++-9
 
-RUN apt-get install -y python3-dev python-dev unzip
-
 WORKDIR /root/resource
 
 RUN wget https://github.com/leethomason/tinyxml2/archive/refs/heads/master.zip && unzip master.zip && mv tinyxml2-master tinyxml2

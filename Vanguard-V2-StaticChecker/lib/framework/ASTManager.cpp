@@ -174,13 +174,227 @@ void getDeclarationLocation(const T *decl, std::string &fileName, int &beginLine
     endLine = sm.getSpellingLineNumber(endLoc);
 }
 
+std::string remove_substring(std::string str, const std::string to_remove) {
+    // 获取子串的长度
+    size_t index = str.find(to_remove);
+    while(index != std::string::npos) {
+        // 从index位置开始删除to_remove.length()个字符
+        str.erase(index, to_remove.length());
+        // 继续查找下一个匹配项，从上一次找到的位置之后开始查找
+        index = str.find(to_remove, index);
+    }
+    return str;
+}
+
+std::string getBaseTypeName(QualType QT) {
+    std::ofstream lo("log.txt", std::ios::app);
+
+    // 移除限定符
+    lo << QT.getAsString() << std::endl;
+    QT = QT.getUnqualifiedType();
+    lo << "删除" << QT.getAsString() << std::endl;
+    while (true) {
+        // 处理指针类型
+        if (QT->isPointerType()) {
+            QT = QT->getPointeeType();
+            lo << "指针" << QT.getAsString() << std::endl;
+            continue;
+        }
+        // 处理引用类型
+        if (QT->isReferenceType()) {
+            QT = QT->getAs<ReferenceType>()->getPointeeType();
+            continue;
+        }
+        // 处理数组类型
+        if (const ArrayType *AT = dyn_cast<ArrayType>(QT)) {
+            QT = AT->getElementType();
+            continue;
+        }
+        // 如果没有其他处理，则返回当前类型的字符串表示
+        lo << "最后" << QT.getAsString() << std::endl;
+
+        return remove_substring(remove_substring(QT.getAsString(), "struct "), "const ");
+    }
+    // 默认返回空字符串，以防万一
+    return "";
+}
+
+cJSON* qualifyType2JSON(QualType qt) {
+    cJSON *tj = cJSON_CreateObject();
+    cJSON_AddStringToObject(tj, "base", getBaseTypeName(qt).c_str());
+    cJSON_AddStringToObject(tj, "literal", qt.getAsString().c_str());
+    cJSON * qualifiersArray = cJSON_CreateArray();
+    if (qt.getLocalQualifiers().hasConst()) {
+        cJSON_AddItemToArray(qualifiersArray, cJSON_CreateString("const"));
+    }
+    if (qt.getLocalQualifiers().hasVolatile()) {
+        cJSON_AddItemToArray(qualifiersArray, cJSON_CreateString("volatile"));
+    }
+    if (qt.getLocalQualifiers().hasRestrict()) {
+        cJSON_AddItemToArray(qualifiersArray, cJSON_CreateString("restrict"));
+    }
+    cJSON_AddBoolToObject(tj, "point", qt->isPointerType());
+    cJSON_AddBoolToObject(tj, "reference", qt->isReferenceType());
+    cJSON_AddBoolToObject(tj, "array", qt->isArrayType());
+    cJSON_AddItemToObject(tj, "qualifiers", qualifiersArray);
+    return tj;
+}
+
+void saveCXXRecords(std::vector <std::string> &ASTs) {
+    cJSON *records_json = cJSON_CreateObject();
+    int i = 0;
+    int astNum = ASTs.size();
+    for (std::string AST: ASTs) {
+        std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
+        std::vector < CXXRecordDecl * > records = common::getRecords(AU->getASTContext());
+        for(CXXRecordDecl *decl: records) {
+            std::string name = decl->getQualifiedNameAsString();
+            cJSON *rj = cJSON_CreateObject();
+            std::string fileName;
+            int beginLine, endLine;
+            getDeclarationLocation(static_cast<const Decl*>(decl), fileName, beginLine, endLine);
+            cJSON_AddStringToObject(rj, "filename", fileName.c_str());
+            cJSON_AddNumberToObject(rj, "beginLine", beginLine);
+            cJSON_AddNumberToObject(rj, "endLine", endLine);
+	        cJSON * methodsArray = cJSON_CreateArray();
+	        cJSON * fieldsArray = cJSON_CreateArray();
+            // 遍历类的方法
+            for(auto method: decl->methods()){
+                std::string methodName = common::getPrettyName(method);
+                cJSON *mj = cJSON_CreateObject();
+                cJSON_AddStringToObject(mj, "name", methodName.c_str());
+                cJSON_AddStringToObject(mj, "access", accessToString(method->getAccess()).c_str());
+                cJSON_AddItemToArray(methodsArray, mj);
+            }
+            // 遍历类的成员变量
+            for(auto field: decl->fields()){
+                QualType fieldType = field->getType();
+                cJSON *fj = qualifyType2JSON(fieldType);
+                cJSON_AddStringToObject(fj, "name", field->getNameAsString().c_str());
+                cJSON_AddStringToObject(fj, "access", accessToString(field->getAccess()).c_str());
+                cJSON_AddItemToArray(fieldsArray, fj);
+            }
+            cJSON_AddItemToObject(rj, "methods", methodsArray);
+            cJSON_AddItemToObject(rj, "fields", fieldsArray);
+            cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
+            cJSON_AddItemToObject(records_json, name.c_str(), rj);
+        }
+        i++;
+        process_bar(float(i) / astNum);
+    }
+    std::ofstream records_file("records.json");
+    records_file << cJSON_Print(records_json);
+}
+
+void saveStructs(std::vector <std::string> &ASTs) {
+    cJSON *structs_json = cJSON_CreateObject();
+    int i = 0;
+    int astNum = ASTs.size();
+    for (std::string AST: ASTs) {
+        std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
+        std::vector < RecordDecl * > structs = common::getStructs(AU->getASTContext());
+        for(RecordDecl *decl: structs) {
+            std::string name = decl->getQualifiedNameAsString();
+            cJSON *rj = cJSON_CreateObject();
+            std::string fileName;
+            int beginLine, endLine;
+            getDeclarationLocation(static_cast<const Decl*>(decl), fileName, beginLine, endLine);
+            cJSON_AddStringToObject(rj, "filename", fileName.c_str());
+            cJSON_AddNumberToObject(rj, "beginLine", beginLine);
+            cJSON_AddNumberToObject(rj, "endLine", endLine);
+            cJSON * fieldsArray = cJSON_CreateArray();
+            // 遍历结构体的成员变量
+            for(auto field: decl->fields()){
+                QualType fieldType = field->getType();
+                cJSON *fj = qualifyType2JSON(fieldType);
+                cJSON_AddStringToObject(fj, "name", field->getNameAsString().c_str());
+                cJSON_AddStringToObject(fj, "access", accessToString(field->getAccess()).c_str());
+                cJSON_AddItemToArray(fieldsArray, fj);
+            }
+            cJSON_AddItemToObject(rj, "fields", fieldsArray);
+            cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
+            cJSON_AddItemToObject(structs_json, name.c_str(), rj);
+        }
+        i++;
+        process_bar(float(i) / astNum);
+    }
+    std::ofstream structs_file("structs.json");
+    structs_file << cJSON_Print(structs_json);
+}
+
+void saveTypedefs(std::vector <std::string> &ASTs) {
+    cJSON *typedefs_json = cJSON_CreateObject();
+    int i = 0;
+    int astNum = ASTs.size();
+    for (std::string AST: ASTs) {
+        std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
+        std::vector < TypedefNameDecl * > typedefs = common::getTypedefs(AU->getASTContext());
+        for(TypedefNameDecl *decl: typedefs) {
+            std::string name = decl->getQualifiedNameAsString();
+            cJSON *tj = cJSON_CreateObject();
+            std::string fileName;
+            int beginLine, endLine;
+            getDeclarationLocation(static_cast<const Decl*>(decl), fileName, beginLine, endLine);
+            cJSON_AddStringToObject(tj, "filename", fileName.c_str());
+            cJSON_AddNumberToObject(tj, "beginLine", beginLine);
+            cJSON_AddNumberToObject(tj, "endLine", endLine);
+            QualType sourceType = decl->getUnderlyingType();
+            if (const RecordType *recordType = sourceType->getAs<RecordType>()) {
+                const RecordDecl *recordDecl = recordType->getDecl();
+                cJSON *sj = cJSON_CreateObject();
+                cJSON_AddStringToObject(sj, "base", recordDecl->getNameAsString().c_str());
+                cJSON_AddStringToObject(sj, "literal", recordDecl->getNameAsString().c_str());
+                cJSON_AddBoolToObject(sj, "point", false);
+                cJSON_AddBoolToObject(sj, "reference", false);
+                cJSON_AddBoolToObject(sj, "array", false);
+                cJSON_AddItemToObject(sj, "qualifiers", cJSON_CreateArray());
+                cJSON_AddItemToObject(tj, "source", sj);
+                cJSON_AddStringToObject(tj, "sourceType", "struct");
+            } else if(sourceType->isFunctionPointerType()) {
+                cJSON *sj = cJSON_CreateObject();
+                cJSON_AddStringToObject(sj, "base", sourceType.getAsString().c_str());
+                cJSON_AddStringToObject(sj, "literal", sourceType.getAsString().c_str());
+                cJSON_AddBoolToObject(sj, "point", false);
+                cJSON_AddBoolToObject(sj, "reference", false);
+                cJSON_AddBoolToObject(sj, "array", false);
+                cJSON_AddItemToObject(sj, "qualifiers", cJSON_CreateArray());
+                cJSON_AddItemToObject(tj, "source", sj);
+                cJSON_AddStringToObject(tj, "sourceType", "function");
+            } else if(const EnumType *enumType = sourceType->getAs<EnumType>()) {
+                std::string enumSource = "";
+                for(auto enumerator: enumType->getDecl()->enumerators()){
+                    enumSource += enumerator->getNameAsString() + ",";
+                }
+                cJSON *sj = cJSON_CreateObject();
+                cJSON_AddStringToObject(sj, "base", enumSource.c_str());
+                cJSON_AddStringToObject(sj, "literal", enumSource.c_str());
+                cJSON_AddBoolToObject(sj, "point", false);
+                cJSON_AddBoolToObject(sj, "reference", false);
+                cJSON_AddBoolToObject(sj, "array", false);
+                cJSON_AddItemToObject(sj, "qualifiers", cJSON_CreateArray());
+                cJSON_AddItemToObject(tj, "source", sj);
+                cJSON_AddStringToObject(tj, "sourceType", "enum");
+            } else {
+                cJSON_AddItemToObject(tj, "source", qualifyType2JSON(sourceType));
+                cJSON_AddStringToObject(tj, "sourceType", "other");
+            }
+            cJSON_AddStringToObject(tj, "target", decl->getNameAsString().c_str());
+            cJSON_AddItemToObject(typedefs_json, name.c_str(), tj);
+        }
+        i++;
+        process_bar(float(i) / astNum);
+    }
+    std::ofstream typedefs_file("typedefs.json");
+    typedefs_file << cJSON_Print(typedefs_json);
+}
+
 ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                        Config &configure)
         : resource(resource), c(configure) {
 
     // 顺便列举全部函数体
     cJSON *functions_json = cJSON_CreateObject();
-    cJSON *records_json = cJSON_CreateObject();
+    cJSON *structs_json = cJSON_CreateObject();
 
     max_size = std::stoi(configure.getOptionBlock("Framework")["queue_size"]);
     std::unordered_set <std::string> functionNames;
@@ -188,11 +402,11 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
     int astNum = ASTs.size();
     int i = 0;
     for (std::string AST: ASTs) {
-
         ASTFile *AF = resource.addASTFile(AST);
         std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
         std::vector < FunctionDecl * > functions =
                 common::getFunctions(AU->getASTContext(), AU->getStartOfMainFileID());
+
         for (FunctionDecl *FD: functions) {
             std::string name = common::getFullName(FD);
             bool use = (functionNames.count(name) == 0);
@@ -239,7 +453,6 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
             int beginLine, endLine;
             getDeclarationLocation(static_cast<const Decl*>(FD), fileName, beginLine, endLine);
             FunctionLoc FDLoc(FD, fileName, beginLine, endLine);
-
             saveFuncLocInfo(FDLoc);
 
             // 获得函数体
@@ -249,42 +462,14 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                 cJSON_AddNumberToObject(fj, "endLine", endLine);
                 cJSON_AddStringToObject(fj, "filename", fileName.c_str());
                 cJSON_AddBoolToObject(fj, "visible", isFunctionInner(FD));
+                cJSON *parameters = cJSON_CreateArray();
+                for(auto param: FD->parameters()){
+                    cJSON_AddItemToArray(parameters, qualifyType2JSON(param->getType()));
+                }
+                cJSON_AddItemToObject(fj, "parameters", parameters);
+                cJSON_AddItemToObject(fj, "return", qualifyType2JSON(FD->getReturnType()));
                 cJSON_AddItemToObject(functions_json, common::getPrettyName(FD).c_str(), fj);
             }
-        }
-
-        std::vector < CXXRecordDecl * > records = common::getRecords(AU->getASTContext());
-        for(CXXRecordDecl *decl: records){
-            std::string name = decl->getQualifiedNameAsString();
-            cJSON *rj = cJSON_CreateObject();
-            std::string fileName;
-            int beginLine, endLine;
-            getDeclarationLocation(static_cast<const Decl*>(decl), fileName, beginLine, endLine);
-            cJSON_AddStringToObject(rj, "filename", fileName.c_str());
-            cJSON_AddNumberToObject(rj, "beginLine", beginLine);
-            cJSON_AddNumberToObject(rj, "endLine", endLine);
-	        cJSON * methodsArray = cJSON_CreateArray();
-	        cJSON * fieldsArray = cJSON_CreateArray();
-            // 遍历类的方法
-            for(auto method: decl->methods()){
-                std::string methodName = common::getPrettyName(method);
-                cJSON *mj = cJSON_CreateObject();
-                cJSON_AddStringToObject(mj, "name", methodName.c_str());
-                cJSON_AddStringToObject(mj, "access", accessToString(method->getAccess()).c_str());
-                cJSON_AddItemToArray(methodsArray, mj);
-            }
-            // 遍历类的成员变量
-            for(auto field: decl->fields()){
-                cJSON *fj = cJSON_CreateObject();
-                cJSON_AddStringToObject(fj, "name", field->getNameAsString().c_str());
-                cJSON_AddStringToObject(fj, "type", field->getType().getAsString().c_str());
-                cJSON_AddStringToObject(fj, "access", accessToString(field->getAccess()).c_str());
-                cJSON_AddItemToArray(fieldsArray, fj);
-            }
-            cJSON_AddItemToObject(rj, "methods", methodsArray);
-            cJSON_AddItemToObject(rj, "fields", fieldsArray);
-            cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
-            cJSON_AddItemToObject(records_json, name.c_str(), rj);
         }
 
         loadASTUnit(std::move(AU));
@@ -292,12 +477,16 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
         process_bar(float(i) / astNum);
     }
 
+
     std::ofstream functions_file("functions.json");
     functions_file << cJSON_Print(functions_json);
-    std::ofstream records_file("records.json");
-    records_file << cJSON_Print(records_json);
 
     resource.buildUseFunctions();
+
+    // save the CXXRecords and Structs
+    saveCXXRecords(ASTs);
+    saveStructs(ASTs);
+    saveTypedefs(ASTs);
 }
 
 void ASTManager::saveFuncLocInfo(FunctionLoc FDLoc) {

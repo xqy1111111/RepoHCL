@@ -104,6 +104,25 @@ private:
   SourceLocation AULoc;
 };
 
+class ASTTypedefLoad : public ASTConsumer,
+                        public RecursiveASTVisitor<ASTTypedefLoad> {
+public:
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TraverseDecl(Context.getTranslationUnitDecl());
+  }
+
+  // Implement the RecursiveASTVisitor interface to visit C++ classes.
+  bool VisitTypedefNameDecl(TypedefNameDecl *decl) {
+    typedefs.push_back(decl);
+    return true;
+  }
+
+  const std::vector<TypedefNameDecl *> &getTypedefs() const { return typedefs; }
+
+private:
+  std::vector<TypedefNameDecl *> typedefs;
+};
+
 class ASTRecordLoad : public ASTConsumer,
                         public RecursiveASTVisitor<ASTRecordLoad> {
 public:
@@ -114,7 +133,7 @@ public:
   // Implement the RecursiveASTVisitor interface to visit C++ classes.
   bool VisitCXXRecordDecl(CXXRecordDecl *decl) {
     if (decl->isThisDeclarationADefinition()) {
-     records.push_back(decl);
+        records.push_back(decl);
     }
     return true;
   }
@@ -123,6 +142,27 @@ public:
 
 private:
   std::vector<CXXRecordDecl *> records;
+};
+
+class ASTStructLoad : public ASTConsumer,
+                        public RecursiveASTVisitor<ASTStructLoad> {
+public:
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TraverseDecl(Context.getTranslationUnitDecl());
+  }
+
+  // Implement the RecursiveASTVisitor interface to visit C++ classes.
+  bool VisitRecordDecl(RecordDecl *decl) {
+    if(decl->isThisDeclarationADefinition() && decl->isStruct()) {
+      structs.push_back(decl);
+    }
+    return true;
+  }
+
+  const std::vector<RecordDecl *> &getStructs() const { return structs; }
+
+private:
+  std::vector<RecordDecl *> structs;
 };
 
 
@@ -743,10 +783,22 @@ std::unique_ptr<ASTUnit> loadFromASTFile(std::string AST) {
                                ASTUnit::LoadEverything, Diags, FileSystemOpts));
 }
 
+std::vector<TypedefNameDecl *> getTypedefs(ASTContext &Context) {
+  ASTTypedefLoad load;
+  load.HandleTranslationUnit(Context);
+  return load.getTypedefs();
+}
+
 std::vector<CXXRecordDecl *> getRecords(ASTContext &Context) {
   ASTRecordLoad load;
   load.HandleTranslationUnit(Context);
   return load.getRecords();
+}
+
+std::vector<RecordDecl *> getStructs(ASTContext &Context) {
+  ASTStructLoad load;
+  load.HandleTranslationUnit(Context);
+  return load.getStructs();
 }
 
 /**

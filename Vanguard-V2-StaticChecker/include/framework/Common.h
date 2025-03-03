@@ -38,6 +38,8 @@ std::string getLambdaName(FunctionDecl *FD);
 
 std::unique_ptr<ASTUnit> loadFromASTFile(std::string AST);
 
+std::vector<TypedefNameDecl *> getTypedefs(ASTContext &Context);
+std::vector<RecordDecl *> getStructs(ASTContext &Context);
 std::vector<CXXRecordDecl *> getRecords(ASTContext &Context);
 std::vector<FunctionDecl *> getFunctions(ASTContext &Context);
 std::vector<FunctionDecl *> getFunctions(ASTContext &Context,

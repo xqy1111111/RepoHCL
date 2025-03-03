@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import re
+from abc import abstractmethod, ABC
+from pyexpat import features
+from typing import List, Optional
+
+from pydantic import BaseModel
+
+
+class Doc(ABC, BaseModel):
+    name: str
+    description: str
+
+    @classmethod
+    def from_doc(cls, s: str) -> List[Doc]:
+        function_pattern = re.compile(r'(###.*?)(?=\n### |\Z)', re.DOTALL)
+        res: List[Doc] = []
+        for match in function_pattern.finditer(s):
+            res.append(cls.from_chapter(match.group(1)))
+        return res
+
+    @classmethod
+    def from_chapter(cls, s: str):
+        module_pattern = re.search(r'### (.*?)\n(.*?)(?=\n### |\Z)', s, re.DOTALL)
+        name = module_pattern.group(1).strip()
+        block = module_pattern.group(2)
+        return cls.from_chapter_hook(cls(name=name, description=cls.from_block(block, 'Description')), block)
+
+    @classmethod
+    @abstractmethod
+    def from_chapter_hook(cls, doc, block: str):
+        pass
+
+    @classmethod
+    def from_block(cls, block: str, header: str) -> Optional[str]:
+        match = re.search(f'#### {header}'+r'(.*?)(?=####|\Z)', block, re.DOTALL)
+        content = match.group(1).strip() if match else None
+        return content
+
+    def markdown(self) -> str:
+        md = f'### {self.name}\n#### Description\n{self.description}\n\n'
+        return md + self.markdown_hook()
+
+    @abstractmethod
+    def markdown_hook(self) -> str:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def doc_type(cls) -> str:
+        pass
+
+
+class ApiDoc(Doc):
+    detail: Optional[str] = None
+    example: Optional[str] = None
+    parameters: Optional[str] = None
+
+    @classmethod
+    def from_chapter_hook(cls, doc: ApiDoc, block: str) -> ApiDoc:
+        doc.detail = cls.from_block(block, 'Code Details')
+        doc.example = cls.from_block(block, 'Example')
+        doc.parameters = cls.from_block(block, 'Parameters')
+        return doc
+
+    def markdown_hook(self) -> str:
+        md = ''
+        if self.parameters is not None:
+            md += f'#### Parameters\n{self.parameters}\n\n'
+        md += '#### Code Details\n{details}\n\n'.format(details=self.detail)
+        if self.example is not None:
+            md += f'#### Example\n{self.example}\n\n'
+        return md.strip()
+
+    @classmethod
+    def doc_type(cls) -> str:
+        return 'function'
+
+
+class ClazzDoc(Doc):
+    detail: Optional[str] = None
+    attributes: Optional[str] = None
+
+    @classmethod
+    def from_chapter_hook(cls, doc: ClazzDoc, block: str) -> ClazzDoc:
+        doc.detail = cls.from_block(block, 'Code Details')
+        doc.attributes = cls.from_block(block, 'Attributes')
+        return doc
+
+    def markdown_hook(self) -> str:
+        md = ''
+        if self.attributes is not None:
+            md += f'#### Attributes\n{self.attributes}\n\n'
+        md += '#### Code Details\n{details}\n\n'.format(details=self.detail)
+        return md.strip()
+
+    @classmethod
+    def doc_type(cls) -> str:
+        return 'class'
+
+
+class ModuleDoc(Doc):
+    example: Optional[str] = None
+    functions: List[str] = None
+
+    @classmethod
+    def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
+        function_doc = cls.from_block(block, 'Functions')
+        doc.functions = list(map(lambda x: x.strip('- '), function_doc.splitlines()))
+        doc.example = cls.from_block(block, 'Example')
+        return doc
+
+    def markdown_hook(self) -> str:
+        md = ''
+        md += '#### Functions\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.functions)))
+        if self.example:
+            md += f'#### Use Case\n{self.example}\n\n'
+        return md.strip()
+
+    @classmethod
+    def doc_type(cls) -> str:
+        return 'module'
+
+class RepoDoc(Doc):
+    features: List[str] = None
+
+    @classmethod
+    def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
+        features_doc = cls.from_block(block, 'Features')
+        doc.features = list(map(lambda x: x.strip('- '), features_doc.splitlines()))
+        return doc
+
+    def markdown_hook(self) -> str:
+        md = '#### Features\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.functions)))
+        return md.strip()
+
+    @classmethod
+    def doc_type(cls) -> str:
+        return 'repo'

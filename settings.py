@@ -74,10 +74,11 @@ class ProjectSettings(BaseSettings):
 
 class ChatCompletionSettings(BaseSettings):
     model: str = "qwen-plus"  # NOTE: No model restrictions for user flexibility, but it's recommended to use models with a larger context window.
-    temperature: PositiveFloat = 0.2
+    temperature: PositiveFloat = 0
     request_timeout: PositiveInt = 60
     openai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     openai_api_key: SecretStr = Field(..., exclude=True)
+    language: str = 'Chinese'
 
     @field_validator("openai_base_url", mode="before")
     @classmethod

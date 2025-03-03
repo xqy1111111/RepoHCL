@@ -7,7 +7,7 @@ import sys
 import threading
 from collections import defaultdict
 from itertools import islice
-from typing import Dict, Set, List
+from typing import Dict, Set, List, final
 
 import click
 import networkx as nx
@@ -16,7 +16,7 @@ from loguru import logger
 
 from ast_generator import gen_sh
 from chat_engine import ClassEngine, FunctionEngine
-from doc import FunctionItem, DocItem, ClassItem, ModuleNote
+from doc import FunctionItem, DocItem, ClassItem, ModuleNote, APINote
 from llm_helper import SimpleLLM, ToolsLLM
 from project_manager import ProjectManager
 from prompt import modules_summarize_prompt, modules_enhance_prompt, repo_summarize_prompt, competitors_prompt, \
@@ -64,12 +64,13 @@ def read_functions(path: str, resource_path: str) -> Dict[str, Dict]:
             if not file.startswith('/'):
                 continue
             # 仅保留resource下的文件
+            resource_path = 'resource/libxml2/'
             i = file.find(resource_path)
             if i == -1:
                 to_remove.append(k)
                 continue
-            v['filename'] = file[i + len(resource_path) + 1:]
-            # file = file.replace('/root/', '')
+            v['filename'] = file[i + len(resource_path):]
+            file = 'resource/libxml2-2.9.9/' + v['filename']
             with open(file, 'r') as code:
                 lines = list(islice(code, int(v.get('beginLine')) - 1, int(v.get('endLine'))))
                 v.setdefault('code', ''.join(lines).strip())
@@ -91,7 +92,6 @@ def read_records(path: str, resource_path: str) -> Dict[str, Dict]:
             # 不是绝对路径说明已经处理过了，跳过
             if not file.startswith('/'):
                 continue
-            # 仅保留resource下的文件
             # 仅保留resource下的文件
             i = file.find(resource_path)
             if i == -1:
@@ -116,6 +116,99 @@ def read_records(path: str, resource_path: str) -> Dict[str, Dict]:
     with open(f'{path}/records.json', 'w') as f:
         f.write(json.dumps(records, indent=4))
     return records
+
+
+def read_structs(path: str, resource_path: str) -> Dict[str, Dict]:
+    functions = read_functions(path, resource_path)
+    typedefs = read_typedefs(path, resource_path)
+    chain = build_typedef_chain(typedefs)
+    # 替换函数参数、返回值为最终类型
+    for m, mv in functions.items():
+        for p in mv.get('parameters'):
+            if p.get('base') in chain:
+                p['base'] = chain.get(p.get('base'))
+        if mv.get('return').get('base') in chain:
+            mv['return']['base'] = chain.get(mv.get('return').get('base'))
+
+    with open(f'{path}/structs.json', 'r') as f:
+        records = json.loads(f.read())
+        to_remove = []
+        for k, v in records.items():
+            file = v.get('filename')
+            # 不是绝对路径说明已经处理过了，跳过
+            if not file.startswith('/'):
+                continue
+            # 仅保留resource下的文件
+            resource_path = 'resource/libxml2/'
+            i = file.find(resource_path)
+            if i == -1:
+                to_remove.append(k)
+                continue
+            v['filename'] = file[i + len(resource_path):]
+            # 查找struct对应的方法
+            methods = []
+            # 取结构体最终类型的基础类型
+            finalK = trim_ref(chain.get(k, k))
+            for m, mv in functions.items():
+                if '__internal_alias' in m:
+                    continue
+                if len(list(filter(lambda p: p.get('base') == finalK, mv.get('parameters')))) > 0:
+                    methods.append({'name': m, 'filename': mv.get('filename')})
+                    continue
+                if mv.get('return').get('base') == finalK:
+                    methods.append({'name': m, 'filename': mv.get('filename')})
+                    continue
+            v['methods'] = methods
+        for k in to_remove:
+            del records[k]
+
+    with open(f'{path}/structs.json', 'w') as f:
+        f.write(json.dumps(records, indent=4))
+    return records
+
+
+def read_typedefs(path: str, resource_path: str) -> Dict[str, Dict]:
+    with open(f'{path}/typedefs.json', 'r') as f:
+        records = json.loads(f.read())
+        to_remove = []
+        for k, v in records.items():
+            file = v.get('filename')
+            # 不是绝对路径说明已经处理过了，跳过
+            if not file.startswith('/'):
+                continue
+            # 仅保留resource下的文件
+            resource_path = 'resource/libxml2/'
+            i = file.find(resource_path)
+            if i == -1:
+                to_remove.append(k)
+                continue
+            v['filename'] = file[i + len(resource_path):]
+        for k in to_remove:
+            del records[k]
+
+    with open(f'{path}/typedefs.json', 'w') as f:
+        f.write(json.dumps(records, indent=4))
+    return records
+
+
+def build_typedef_chain(typedefs: Dict[str, Dict]) -> Dict[str, str]:
+    chain = {}
+    trim_typedefs = {}
+    for k in typedefs:
+        if typedefs[k].get('sourceType') in ('other', 'struct') and typedefs[k].get('source').get('literal') != k:
+            trim_typedefs[k] = typedefs[k]
+    for t in trim_typedefs:
+        init_t = final_value = t
+        while t in trim_typedefs:
+            next_t = trim_typedefs[t].get('source').get('literal')
+            final_value = final_value.replace(t, next_t)
+            t = trim_ref(next_t)
+        chain[init_t] = final_value
+    return chain
+
+
+def trim_ref(symbol: str) -> str:
+    return re.sub(r'[*&]|(\[\d*])|const|volatile|restrict', '', symbol).strip()
 
 
 # 筛选外部可见的函数
@@ -344,6 +437,57 @@ def gen_doc_for_classes(output_path: str, resource_path: str, doc_path: str):
         i += 1
 
 
+def gen_doc_for_structs(output_path: str, resource_path: str, doc_path: str):
+    structs = read_structs(output_path, resource_path)
+    logger.info(f'gen doc for structs, struct count: {len(structs)}')
+    ce = ClassEngine(ProjectManager(repo_path=resource_path))
+    i = 0
+    for clazz, v in structs.items():
+        if i < 1:
+            i += 1
+            continue
+        clazz_item = ClassItem()
+        name = spelling_name(clazz)
+        clazz_item.code = 'struct ' + name + ' {\n'
+        clazz_item.name = clazz
+        clazz_item.file = v.get('filename')
+        clazz_item.reference_who = []
+        methods = v.get('methods')
+        fields = v.get('fields')
+        if len(fields):
+            clazz_item.has_attrs = True
+        # 根据类的成员变量拼接类的代码
+        for f in fields:
+            clazz_item.code += f'  ' + f.get('literal') + ' ' + spelling_name(f.get('name')) + ';\n'
+        clazz_item.code += '\n';
+        # 将类的成员方法载入
+        k = 0
+        for m in methods:
+            method_item = FunctionItem()
+            method_item.name = m.get('name')
+            method_item.file = m.get('filename')
+            if method_item.imports(doc_path):
+                k += 1
+                method_item.md_content = _simplify_functions_md(method_item.md_content)
+                clazz_item.reference_who.append(method_item)
+                clazz_item.code += '  ' + spelling_name(method_item.name) + ';\n'
+            else:
+                logger.error(f'fail to load method {method_item.name}')
+        if k / len(methods) < 0.6:
+            continue
+
+        clazz_item.code = clazz_item.code.strip()
+        if not clazz_item.imports(doc_path):
+            clazz_item.md_content = ce.generate_doc(clazz_item)
+            # 文档生成失败，先跳过
+            if clazz_item.md_content is not None:
+                clazz_item.exports(doc_path)
+                logger.info(f'parse {clazz_item.name}: {i + 1}/{len(structs)}')
+        else:
+            logger.info(f'load {clazz_item.name}: {i + 1}/{len(structs)}')
+        i += 1
+
+
 def gen_doc_for_modules(output_path: str, resource_path: str, doc_path: str):
     apis = read_extern_functions(output_path, resource_path)
     logger.info(f'gen doc for modules, apis count: {len(apis)}')
@@ -492,4 +636,19 @@ def main(path):
 
 
 if __name__ == '__main__':
-    main()
+    # print(len(build_typedef_chain(read_typedefs('output/libxml2-2.9.9', 'resource/libxml2-2.9.9'))))
+    # read_structs('output/libxml2-2.9.9', 'resource/libxml2-2.9.9')
+    # gen_doc_for_structs('output/libxml2-2.9.9', 'resource/libxml2-2.9.9', 'docs/libxml2-2.9.9')
+    for root, _, files in os.walk('docs/libxml2-2.9.9'):
+        for f in files:
+            if '.prompt.' in f:
+                continue
+            with open(f'{root}/{f}', 'r') as fr:
+                if '.function.' in f:
+                    try:
+                        n = APINote.from_doc(fr.read())
+                        for ni in n:
+                            with open('apis.txt', 'a') as x:
+                                x.write(f'{ni.name}\n')
+                    except:
+                        pass
