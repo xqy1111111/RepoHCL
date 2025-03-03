@@ -12,9 +12,11 @@ modules_summarize_prompt = '''
 You are an expert in software architecture analysis. 
 Your task is to review function descriptions from a C++ code repository and organize them into multiple functional modules based on their purpose and interrelations. 
 You need to output a structured summary for each identified functional module.
-The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
+
+The standard format is in the Markdown reference paragraph below, and you shouldn't write the reference symbols `>` when you output:
 
 > ### Module Name
+> #### Description
 > A concise paragraph summarizing the module's purpose, how it contributes to solving specific problems, and which functions work together within the module.
 > #### Functions
 > - Function1
@@ -43,7 +45,7 @@ There are two key points for improvement:
 1. This module contains some functions, but these functions may not be appropriate, and you need to remove these functions.
 2. Design a usage scenario for this module. You need to mock a use case that combines as many functions as possible from the module to solve a specific problem in this scenario. The use case should be realistic and demonstrate the functionality of the module.'
 
-The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
+The improved README should keep the same format as before. To ensure the same format, you should follow the standard format in the Markdown reference paragraph below. You do not need to write the reference symbols `>` when you output:
 
 > ### Module Name
 > #### Description
@@ -64,7 +66,9 @@ You'd better consider the following workflow:
 Please Note:
 - If all functions are related to the module tightly, you don't need to remove any functions.
 - #### Functions is a list of function names included in this module. Please use the full function name with the return type and parameters, not the abbreviation.
-- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. Don't add new Level 3 or Level 4 headings. Do not write anything outside the format
+- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
+- Don't write new Level 3 or Level 4 headings. Don't write anything outside the format. Do not output descriptions of improvements.
+
 
 Here is the documentation of the module you need to enhance:
 
@@ -77,6 +81,10 @@ Here is the documentation of the functions referenced in the module:
 
 class ModuleMetric(Metric):
     def eva(self, ctx):
+        existed_modules_doc = ctx.load_module_docs()
+        if existed_modules_doc:
+            logger.info(f'[FunctionMetric] load modules: {len(existed_modules_doc)}')
+            return
         # 提取所有用户可见的函数
         apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible, ctx.function_map.keys()))
         logger.info(f'[ModuleMetric] gen doc for modules, apis count: {len(apis)}')
@@ -93,7 +101,6 @@ class ModuleMetric(Metric):
                     f.write(m.markdown() + '\n')
         logger.info(f'[ModuleMetric] gen doc for modules, modules count: {len(modules)}')
         # 优化模块文档
-        ctx.modules = []
         for i in range(len(modules)):
             m = modules[i]
             # 使用完整函数文档组织上下文
@@ -108,6 +115,5 @@ class ModuleMetric(Metric):
             res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
             doc = ModuleDoc.from_chapter(res)
             # 保存模块文档
-            ctx.modules.append(Symbol(base=doc.name))
             ctx.save_module_doc(doc)
             logger.info(f'[ModuleMetric] gen doc for module {i}: {m.name}')

@@ -1,6 +1,5 @@
 import json
-import os.path
-import sys
+import shutil
 import time
 import uuid
 from enum import Enum
@@ -11,13 +10,11 @@ from fastapi import FastAPI, BackgroundTasks
 from loguru import logger
 from pydantic import BaseModel
 
-from doc import APINote, ClassNote, ModuleNote
-from file_helper import resolve_archive
-from main import run
-from settings import SettingsManager
+from main import eva
+from metrics import EvaContext
+from utils import resolve_archive
 
 app = FastAPI()
-settings = SettingsManager.get_setting()
 
 
 class RATask(BaseModel):
@@ -77,28 +74,17 @@ def test2():
 
 def run_with_response(path: str, req: RATask):
     try:
-        run(path)
-        doc_path = f'docs/{path}'
-        data = {'functions': [],
-                # 'classes': [],
-                'modules': []}
-        for root, _, files in os.walk(doc_path):
-            for f in files:
-                if '.prompt.' in f:
-                    continue
-                with open(f'{root}/{f}', 'r') as fr:
-                    if '.function.' in f:
-                        data['functions'].extend(APINote.from_doc(fr.read()))
-                    # elif '.class.' in f:
-                    #     data['classes'].extend(ClassNote.from_doc(fr.read()))
-                    elif 'modules.' in f:
-                        data['modules'].extend(ModuleNote.from_doc(fr.read()))
-        data['functions'] = list(
-            map(lambda x: x.dict(), data['functions']))
-        # data['classes'] = list(
-        #     map(lambda x: x.dict(), data['classes']))
-        data['modules'] = list(
-            map(lambda x: x.dict(), data['modules']))
+        ctx = EvaContext(doc_path=f'doc/{path}', resource_path=f'resource/{path}', output_path=f'output/{path}')
+        eva(ctx)
+        # 清扫工作路径
+        shutil.rmtree(f'resource/{path}')
+        shutil.rmtree(f'output/{path}')
+        data = {
+            'functions': list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.function_map.keys())),
+            'classes': list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.clazz_map.keys())),
+            'modules': list(map(lambda x: x.model_dump(), ctx.load_module_docs())),
+            'repo': [ctx.load_repo_doc().model_dump()]
+        }
         # 回调传结果，重试几次
         retry = 5
         while retry > 0:
@@ -122,6 +108,5 @@ def run_with_response(path: str, req: RATask):
                       data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(
                           exclude_none=True, exclude_unset=True),
                       headers={'Content-Type': 'application/json'})
-
 
 # run_with_response('md5', RATask(id='8', callback='127.0.0.1:8000/tools/callback', repo='1'))

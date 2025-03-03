@@ -108,7 +108,7 @@ class ModuleDoc(Doc):
     def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
         function_doc = cls.from_block(block, 'Functions')
         doc.functions = list(map(lambda x: x.strip('- '), function_doc.splitlines()))
-        doc.example = cls.from_block(block, 'Example')
+        doc.example = cls.from_block(block, 'Use Case')
         return doc
 
     def markdown_hook(self) -> str:
@@ -132,7 +132,7 @@ class RepoDoc(Doc):
         return doc
 
     def markdown_hook(self) -> str:
-        md = '#### Features\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.functions)))
+        md = '#### Features\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.features)))
         return md.strip()
 
     @classmethod

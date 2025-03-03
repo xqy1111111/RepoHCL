@@ -50,14 +50,6 @@ class SimpleLLM:
         is_thinking = False
         answer_content = ''
         for chunk in response:
-            if not chunk.choices:
-                if ProjectSettings().is_debug():
-                    print()
-                    with open('prompt.md', 'a') as d:
-                        d.write('\n'.join(list(map(lambda s: s.get('content'), self._history))))
-                logger.info(
-                    f'[SimpleLLM] chat {chunk.id}: token usage(prompt {chunk.usage.prompt_tokens}, response {chunk.usage.completion_tokens})')
-                continue
             delta = chunk.choices[0].delta
             if hasattr(delta, 'reasoning_content') and delta.reasoning_content is not None:
                 if not ProjectSettings().is_debug():
@@ -76,6 +68,11 @@ class SimpleLLM:
                     print('\n'+'='*10+'answering'+'='*10)
                     is_thinking = False
                 print(delta.content, end='', flush=True)
+
+        if ProjectSettings().is_debug():
+            print()
+            with open('prompt.md', 'a') as d:
+                d.write('\n'.join(list(map(lambda s: s.get('content'), self._history))))
         return answer_content
 
     def add_file(self, path: str):

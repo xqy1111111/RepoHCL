@@ -5,8 +5,7 @@ from typing import List, Dict, TypeVar, Type
 
 import networkx as nx
 
-from . import ModuleDoc
-from .doc import ApiDoc, ClazzDoc, Doc
+from .doc import ApiDoc, ClazzDoc, ModuleDoc, Doc, RepoDoc
 
 
 # 函数、类的唯一标识符
@@ -102,7 +101,6 @@ class EvaContext:
     callgraph: nx.DiGraph = None
     clazz_callgraph: nx.DiGraph = None
     structure: str = None
-    modules: List[Symbol] = None
 
     def _save_doc(self, filename: str, doc: Doc):
         f = f'{self.doc_path}/{filename}.{doc.doc_type()}.md'
@@ -147,17 +145,21 @@ class EvaContext:
         with open(f'{self.doc_path}/modules.md', 'a') as t:
             t.write(doc.markdown() + '\n')
 
-    def load_module_doc(self, symbol: Symbol) -> ClazzDoc | None:
-        chapters = self._load_doc('modules.md', ClazzDoc)
-        for c in chapters:
-            doc: ClazzDoc = c
-            if doc.name == symbol.base:
-                return doc
-        return None
+    def load_module_docs(self) -> List[ModuleDoc] | None:
+        if not os.path.exists(f'{self.doc_path}/modules.md'):
+            return None
+        with open(f'{self.doc_path}/modules.md', 'r') as t:
+            return ModuleDoc.from_doc(t.read())
 
     def save_repo_doc(self, doc):
         with open(f'{self.doc_path}/repo.md', 'a') as t:
             t.write(doc.markdown() + '\n')
+
+    def load_repo_doc(self) -> RepoDoc | None:
+        if not os.path.exists(f'{self.doc_path}/repo.md'):
+            return None
+        with open(f'{self.doc_path}/repo.md', 'r') as t:
+            return RepoDoc.from_chapter(t.read())
 
 class Metric(metaclass=ABCMeta):
     @abstractmethod

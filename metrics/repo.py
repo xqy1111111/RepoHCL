@@ -23,7 +23,8 @@ The standard format is in the Markdown reference paragraph below, and you do not
 
 Please Note:
 - #### Features is a list of main features that the software providing to users. Each feature should be described in 1~2 sentences. Don't mention specific function names. Don't make up unverified features. 
-- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. Don't add new Level 3 or Level 4 headings. Do not write anything outside the format
+- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
+- Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Don't output descriptions out of the format.
 
 Here is the documentation of main modules of your software. You should refer it to write the README.md:
 
@@ -108,15 +109,16 @@ The improved README should keep the same format as before. To ensure the same fo
 
 Please Note:
 - #### Features is a list of main features that the software providing to users. Each feature should be described in 1~2 sentences. Don't mention specific function names. Don't make up unverified features. 
-- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. Don't add new Level 3 or Level 4 headings. Do not write anything outside the format
+- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
+- Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Do not output descriptions of improvements.
 '''
 
 class RepoMetric(Metric):
     def eva(self, ctx):
         # 使用模块文档组织上下文
-        modules = ctx.modules
+        modules = ctx.load_module_docs()
         logger.info(f'[RepoMetric] gen doc for repo, modules count: {len(modules)}')
-        modules_doc = '\n\n---\n\n'.join(map(lambda m: ctx.load_module_doc(m), modules))
+        modules_doc = '\n\n---\n\n'.join(map(lambda m: m.markdown(), modules))
         prompt = repo_summarize_prompt.format(modules_doc=prefix_with(modules_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         doc = RepoDoc.from_chapter(res)
@@ -125,7 +127,7 @@ class RepoMetric(Metric):
             with open(f'{ctx.doc_path}/repo-0.md', 'w') as f:
                 f.write(doc.markdown())
         logger.info(f'[RepoMetric] gen doc for repo, doc inited')
-        prompt2 = questions_prompt.format(repo_doc=doc)
+        prompt2 = questions_prompt.format(repo_doc=doc.markdown())
         questions_doc = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
         # 保存仓库文档QA
         if ProjectSettings().is_debug():
@@ -133,7 +135,8 @@ class RepoMetric(Metric):
                 f.write(questions_doc)
         logger.info(f'[RepoMetric] gen doc for repo, questions inited')
         question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
-        questions = list(map(lambda x: f'**Question**: {x.group(1)}. {x.group(2)}', question_pattern.findall(questions_doc)))
+
+        questions = list(map(lambda x: f'**Question**: {x.group(1)}. {x.group(2)}', question_pattern.finditer(questions_doc)))
 
         def read_functions_md(name: str):
             return ctx.load_function_doc(Symbol(base=name)).markdown()
@@ -160,7 +163,7 @@ class RepoMetric(Metric):
         tools_map = {'read_functions_md': read_functions_md}
         # 回答每个问题
         toolLLM = (ToolsLLM(ChatCompletionSettings(), tools, tools_map)
-                   .add_system_msg(qa_prompt.format(repo_doc=prefix_with(doc, '> '),
+                   .add_system_msg(qa_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '),
                                                     modules_doc=prefix_with(modules_doc, '> '))))
         questions_with_answer = []
         for i in range(len(questions)):
@@ -173,7 +176,7 @@ class RepoMetric(Metric):
         if ProjectSettings().is_debug():
             with open(f'{ctx.doc_path}/repo-3.md', 'w') as f:
                 f.write(qa_doc)
-        prompt3 = repo_enhance_prompt.format(repo_doc=prefix_with(doc, '> '), qa=prefix_with(qa_doc, '> '))
+        prompt3 = repo_enhance_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '), qa=prefix_with(qa_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt3).ask()
         doc = RepoDoc.from_chapter(res)
         ctx.save_repo_doc(doc)
