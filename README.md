@@ -2,15 +2,17 @@
 借助LLM理解C/C++项目，为项目中的每个源代码文件生成文档
 
 ### 工作流程
-为C/C++项目生成AST
-基于AST解析源代码文件中包含的类与函数，并生成Function/Class CallGraph
-基于Function CallGraph的逆拓扑排序，与LLM交互，为各个函数生成文档
-基于Class CallGraph的逆拓扑排序，与LLM交互，为各个类生成文档
+- 为C/C++项目生成AST
+- 基于AST解析源代码文件中包含的类与函数，并生成Function/Class CallGraph
+- 按Function CallGraph的逆拓扑排序，为各个函数生成文档
+- 按Class CallGraph的逆拓扑排序，为各个类生成文档
+- 基于函数文档生成模块文档
+- 基于模块文档生成仓库文档
 ### 项目结构
 ```
 ├── docker                      # docker封装的项目demo
-│    ├── dockerfile.cg_python  
-│    └── dockerfile.cg_service
+│    ├── dockerfile.cg_python   # main.py的docker运行环境
+│    └── dockerfile.cg_service  # service.py的docker运行环境
 ├── lib                         # 项目依赖的库，主要包含Vanguard-V2-StaticChecker的编译产物
 │    └── cge
 ├── Vanguard-V2-StaticChecker   # C/C++项目静态分析工具
@@ -18,15 +20,23 @@
 │    └── vanguard
 ├── 'docs'                      # 生成的文档目录(运行时生成)
 ├── 'output'                    # C/C++项目分析中间产物目录(运行时生成)
-├── ast_generator.py            # 为C/C++项目生成AST
-├── chat_engine.py              # LLM理解源代码
-├── llm_helper.py               # LLM工具类库
-├── log.py                      # 日志工具类
-├── doc.py                      # 文档的对象表示
-├── multi_task_dispatch.py      
-├── project_manager.py          # 项目目录结构的对象表示
-├── prompt.py                   # LLM Prompt常量
-├── settings.py                 # 配置
+├── metrics                     # 各个度量指标实现
+│    ├── clazz.py               # 类级别度量
+│    ├── doc.py                 # 度量结果文档对象
+│    ├── function.py            # 函数级别度量
+│    ├── metric.py              # 度量基类及上下文
+│    ├── module.py              # 模块级别度量
+│    ├── parser.py              # 软件解析
+│    ├── repo.py                # 仓库级别度量
+│    └── structure.py           # 目录结构度量
+├── utils
+│    ├── ast_generator.py       # C/C++项目生成AST
+│    ├── file_helper.py         # 压缩文件工具类库
+│    ├── llm_helper.py          # LLM工具类库
+│    ├── multi_task_dispatch.py
+│    ├── settings.py            # 配置工具类库
+│    └── strings.py             # 字符串工具类库
+├── .env                        # 配置文件/环境变量
 ├── main.py                     # 命令行入口
 ├── service.py                  # web服务入口
 ├── requirements.txt            # Python依赖管理
