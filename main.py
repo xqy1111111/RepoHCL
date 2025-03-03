@@ -39,11 +39,11 @@ def main(path):
     # 移动到工作路径
     shutil.copytree(path, f'resource/{basename}', dirs_exist_ok=True)
     # 初始化上下文
-    ctx = EvaContext(doc_path=f'doc/{basename}', resource_path=f'resource/{basename}', output_path=f'output/{basename}')
+    ctx = EvaContext(doc_path=f'docs/{basename}', resource_path=f'resource/{basename}', output_path=f'output/{basename}')
     # 开始运行
     eva(ctx)
     # 生成gitbook输出
-    response_with_gitbook(f'doc/{basename}')
+    response_with_gitbook(f'docs/{basename}')
     # 清扫工作路径
     shutil.rmtree(f'resource/{basename}')
     shutil.rmtree(f'output/{basename}')

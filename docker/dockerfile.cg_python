@@ -26,6 +26,10 @@ RUN python3 main.py md5
 
 # RUN mv Vanguard-V2-StaticChecker vanguard && python3 main.py vanguard
 
-RUN gitbook init docs/vanguard
+# RUN gitbook init docs/vanguard
 
-CMD ["gitbook", "serve", "docs/vanguard"]
+# CMD ["gitbook", "serve", "docs/vanguard"]
+
+RUN gitbook init docs/md5
+
+CMD ["gitbook", "serve", "docs/md5"]
