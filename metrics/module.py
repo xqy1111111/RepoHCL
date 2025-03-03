@@ -5,7 +5,7 @@ from loguru import logger
 
 from utils import SimpleLLM, prefix_with, ChatCompletionSettings
 from utils.settings import ProjectSettings
-from . import ModuleDoc
+from .doc import ModuleDoc
 from .metric import Metric, Symbol
 
 modules_summarize_prompt = '''

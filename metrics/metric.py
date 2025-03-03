@@ -1,7 +1,7 @@
 import os
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Dict, TypeVar, Type
+from typing import List, Dict, TypeVar, Type, Optional
 
 import networkx as nx
 
@@ -52,7 +52,6 @@ class FuncDef:
     beginLine: int = 0
     endLine: int = 0
     # return_type: FieldDef
-
 
 
 @dataclass
@@ -119,7 +118,7 @@ class EvaContext:
         func_def = self.function_map.get(symbol)
         self._save_doc(func_def.filename, doc)
 
-    def load_function_doc(self, symbol: Symbol) -> ApiDoc | None:
+    def load_function_doc(self, symbol: Symbol) -> Optional[ApiDoc]:
         func_def = self.function_map.get(symbol)
         chapters = self._load_doc(func_def.filename, ApiDoc)
         for c in chapters:
@@ -132,7 +131,7 @@ class EvaContext:
         clazz_def = self.clazz_map.get(symbol)
         self._save_doc(clazz_def.filename, doc)
 
-    def load_clazz_doc(self, symbol: Symbol) -> ClazzDoc | None:
+    def load_clazz_doc(self, symbol: Symbol) -> Optional[ClazzDoc]:
         clazz_def = self.clazz_map.get(symbol)
         chapters = self._load_doc(clazz_def.filename, ClazzDoc)
         for c in chapters:
@@ -145,7 +144,7 @@ class EvaContext:
         with open(f'{self.doc_path}/modules.md', 'a') as t:
             t.write(doc.markdown() + '\n')
 
-    def load_module_docs(self) -> List[ModuleDoc] | None:
+    def load_module_docs(self) -> Optional[List[ModuleDoc]]:
         if not os.path.exists(f'{self.doc_path}/modules.md'):
             return None
         with open(f'{self.doc_path}/modules.md', 'r') as t:
@@ -155,11 +154,12 @@ class EvaContext:
         with open(f'{self.doc_path}/repo.md', 'a') as t:
             t.write(doc.markdown() + '\n')
 
-    def load_repo_doc(self) -> RepoDoc | None:
+    def load_repo_doc(self) -> Optional[RepoDoc]:
         if not os.path.exists(f'{self.doc_path}/repo.md'):
             return None
         with open(f'{self.doc_path}/repo.md', 'r') as t:
             return RepoDoc.from_chapter(t.read())
+
 
 class Metric(metaclass=ABCMeta):
     @abstractmethod

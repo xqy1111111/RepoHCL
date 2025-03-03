@@ -246,6 +246,8 @@ class ClangParser(Metric):
         cmd('./buildast.sh')
         cmd(f'lib/cge {resource_path}/astList.txt', path='.')
         os.makedirs(output_path, exist_ok=True)
+        shutil.move('structs.json', output_path)
+        shutil.move('typedefs.json', output_path)
         shutil.move('functions.json', output_path)
         shutil.move('records.json', output_path)
         shutil.move('cg.dot', output_path)
