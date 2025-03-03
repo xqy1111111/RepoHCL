@@ -20,7 +20,7 @@ COPY . .
 
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && pip install -r requirements.txt
 
-RUN unzip master.zip && mv md5-master md5 && rm master.zip
+RUN wget https://github.com/talent518/md5/archive/refs/heads/master.zip && unzip master.zip && mv md5-master md5 && rm master.zip
 
 RUN python3 main.py md5
 
