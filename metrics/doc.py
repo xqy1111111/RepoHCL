@@ -5,7 +5,7 @@ from abc import abstractmethod, ABC
 from pyexpat import features
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 
 class Doc(ABC, BaseModel):
@@ -104,6 +104,10 @@ class ModuleDoc(Doc):
     example: Optional[str] = None
     functions: List[str] = None
 
+    @field_serializer('functions')
+    def functions_serializer(self, v: List[str], _info) -> str:
+        return '\n'.join(map(lambda x: f'- {x}', v))
+
     @classmethod
     def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
         function_doc = cls.from_block(block, 'Functions')
@@ -124,6 +128,10 @@ class ModuleDoc(Doc):
 
 class RepoDoc(Doc):
     features: List[str] = None
+
+    @field_serializer('features')
+    def features_serializer(self, v: List[str], _info) -> str:
+        return '\n'.join(map(lambda x: f'- {x}', v))
 
     @classmethod
     def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
