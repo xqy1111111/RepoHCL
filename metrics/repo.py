@@ -110,11 +110,16 @@ The improved README should keep the same format as before. To ensure the same fo
 Please Note:
 - #### Features is a list of main features that the software providing to users. Each feature should be described in 1~2 sentences. Don't mention specific function names. Don't make up unverified features. 
 - The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
-- Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Do not output descriptions of improvements.
+- You can revise the content in #### Description and #### Features sections if they are not consistent with the answers to the questions.
+- Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Do not output descriptions of improvements or summary in the end.
 '''
 
 class RepoMetric(Metric):
     def eva(self, ctx):
+        existed_repo_doc =  ctx.load_repo_doc()
+        if existed_repo_doc:
+            logger.info(f'[RepoMetric] load repo')
+            return
         # 使用模块文档组织上下文
         modules = ctx.load_module_docs()
         logger.info(f'[RepoMetric] gen doc for repo, modules count: {len(modules)}')

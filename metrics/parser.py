@@ -130,7 +130,7 @@ class ClangParser(Metric):
                     clazz_functions = ClangParser._find_related_functions(s, functions)
 
                 clazz_map[s] = ClazzDef(symbol=s, fields=fields, functions=clazz_functions,
-                                        filename=resource_path + '/' + v.get('filename'),
+                                        filename=v.get('filename'),
                                         beginLine=v.get('beginLine'), endLine=v.get('endLine'))
 
         records = ClangParser._read_file(f'{output_path}/structs.json', resource_path)
@@ -151,7 +151,7 @@ class ClangParser(Metric):
     @staticmethod
     def _load_sample_callgraph(output_path: str, functions: Dict[Symbol, FuncDef], starts: List[Symbol]) -> nx.DiGraph:
         callgraph = ClangParser._load_callgraph(output_path, functions)
-        q = list(starts)
+        q = list(map(lambda x: x.base, starts))
         v = set()
         ng = nx.DiGraph()
         while len(q):
@@ -174,7 +174,8 @@ class ClangParser(Metric):
             if isinstance(node, pydot.Node):
                 label = node.get('label')[1:-1]
                 name_map[node.get_name()] = label
-
+                if Symbol(base=label) in functions:
+                    callgraph.add_node(label)
         # 添加边
         for edge in dot.get_edges():
             source = name_map[edge.get_source()]
@@ -207,14 +208,15 @@ class ClangParser(Metric):
         ctx.clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.function_map, clazz_typedefs_map)
         logger.info(f'[ClangParser] class size: {len(ctx.clazz_map)}')
         ctx.callgraph = self._load_callgraph(ctx.output_path, ctx.function_map)
-        logger.info(f'[ClangParser] callgraph size: {len(ctx.callgraph.edges)}')
+        logger.info(f'[ClangParser] callgraph size: {len(ctx.callgraph.nodes)}, {len(ctx.callgraph.edges)}')
         ctx.clazz_callgraph = self._load_clazz_callgraph(ctx.clazz_map)
-        logger.info(f'[ClangParser] class callgraph size: {len(ctx.clazz_callgraph.edges)}')
+        logger.info(f'[ClangParser] class callgraph size: {len(ctx.clazz_callgraph.nodes)}, {len(ctx.clazz_callgraph.edges)}')
 
     @staticmethod
     def _load_clazz_callgraph(clazz_map):
         graph = nx.DiGraph()
         for s, clazz in clazz_map.items():
+            graph.add_node(s.base)
             for f in clazz.fields:
                 if f.symbol in clazz_map and f.symbol != s:
                     graph.add_edge(s.base, f.symbol.base)

@@ -186,42 +186,8 @@ std::string remove_substring(std::string str, const std::string to_remove) {
     return str;
 }
 
-std::string getBaseTypeName(QualType QT) {
-    std::ofstream lo("log.txt", std::ios::app);
-
-    // 移除限定符
-    lo << QT.getAsString() << std::endl;
-    QT = QT.getUnqualifiedType();
-    lo << "删除" << QT.getAsString() << std::endl;
-    while (true) {
-        // 处理指针类型
-        if (QT->isPointerType()) {
-            QT = QT->getPointeeType();
-            lo << "指针" << QT.getAsString() << std::endl;
-            continue;
-        }
-        // 处理引用类型
-        if (QT->isReferenceType()) {
-            QT = QT->getAs<ReferenceType>()->getPointeeType();
-            continue;
-        }
-        // 处理数组类型
-        if (const ArrayType *AT = dyn_cast<ArrayType>(QT)) {
-            QT = AT->getElementType();
-            continue;
-        }
-        // 如果没有其他处理，则返回当前类型的字符串表示
-        lo << "最后" << QT.getAsString() << std::endl;
-
-        return remove_substring(remove_substring(QT.getAsString(), "struct "), "const ");
-    }
-    // 默认返回空字符串，以防万一
-    return "";
-}
-
 cJSON* qualifyType2JSON(QualType qt) {
     cJSON *tj = cJSON_CreateObject();
-    cJSON_AddStringToObject(tj, "base", getBaseTypeName(qt).c_str());
     cJSON_AddStringToObject(tj, "literal", qt.getAsString().c_str());
     cJSON * qualifiersArray = cJSON_CreateArray();
     if (qt.getLocalQualifiers().hasConst()) {
@@ -342,7 +308,6 @@ void saveTypedefs(std::vector <std::string> &ASTs) {
             if (const RecordType *recordType = sourceType->getAs<RecordType>()) {
                 const RecordDecl *recordDecl = recordType->getDecl();
                 cJSON *sj = cJSON_CreateObject();
-                cJSON_AddStringToObject(sj, "base", recordDecl->getNameAsString().c_str());
                 cJSON_AddStringToObject(sj, "literal", recordDecl->getNameAsString().c_str());
                 cJSON_AddBoolToObject(sj, "point", false);
                 cJSON_AddBoolToObject(sj, "reference", false);
@@ -352,7 +317,6 @@ void saveTypedefs(std::vector <std::string> &ASTs) {
                 cJSON_AddStringToObject(tj, "sourceType", "struct");
             } else if(sourceType->isFunctionPointerType()) {
                 cJSON *sj = cJSON_CreateObject();
-                cJSON_AddStringToObject(sj, "base", sourceType.getAsString().c_str());
                 cJSON_AddStringToObject(sj, "literal", sourceType.getAsString().c_str());
                 cJSON_AddBoolToObject(sj, "point", false);
                 cJSON_AddBoolToObject(sj, "reference", false);
@@ -366,7 +330,6 @@ void saveTypedefs(std::vector <std::string> &ASTs) {
                     enumSource += enumerator->getNameAsString() + ",";
                 }
                 cJSON *sj = cJSON_CreateObject();
-                cJSON_AddStringToObject(sj, "base", enumSource.c_str());
                 cJSON_AddStringToObject(sj, "literal", enumSource.c_str());
                 cJSON_AddBoolToObject(sj, "point", false);
                 cJSON_AddBoolToObject(sj, "reference", false);

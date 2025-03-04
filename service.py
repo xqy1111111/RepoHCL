@@ -51,7 +51,8 @@ def fetch_repo(repo: str) -> str:
 @app.post('/tools/hcl')
 async def hcl(req: RATask, background_tasks: BackgroundTasks) -> RAResult:
     try:
-        path = fetch_repo(req.repo)
+        # path = fetch_repo(req.repo)
+        path = 'md5'
         logger.info(f'fetch repo {req.repo} to {path}')
     except Exception as e:
         logger.error(f'fail to get `{req.repo}`, err={e}')
@@ -74,14 +75,11 @@ def test2():
 
 def run_with_response(path: str, req: RATask):
     try:
-        ctx = EvaContext(doc_path=f'doc/{path}', resource_path=f'resource/{path}', output_path=f'output/{path}')
+        ctx = EvaContext(doc_path=f'docs/{path}', resource_path=f'resource/{path}', output_path=f'output/{path}')
         eva(ctx)
-        # 清扫工作路径
-        shutil.rmtree(f'resource/{path}')
-        shutil.rmtree(f'output/{path}')
         data = {
             'functions': list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.function_map.keys())),
-            'classes': list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.clazz_map.keys())),
+            'classes': list(map(lambda x: ctx.load_clazz_doc(x).model_dump(), ctx.clazz_map.keys())),
             'modules': list(map(lambda x: x.model_dump(), ctx.load_module_docs())),
             'repo': [ctx.load_repo_doc().model_dump()]
         }
@@ -94,7 +92,7 @@ def run_with_response(path: str, req: RATask):
                                     data=RAResult(id=req.id,
                                                   status=RAStatus.success.value,
                                                   message='ok',
-                                                  result=json.dumps(data)).model_dump_json(exclude_none=True,
+                                                  result=json.dumps(data, ensure_ascii=False)).model_dump_json(exclude_none=True,
                                                                                            exclude_unset=True),
                                     headers={'Content-Type': 'application/json'})
                 logger.info(f'callback send, status:{res.status_code}, message:{res.text}')
@@ -108,5 +106,9 @@ def run_with_response(path: str, req: RATask):
                       data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(
                           exclude_none=True, exclude_unset=True),
                       headers={'Content-Type': 'application/json'})
+    # 清扫工作路径
+    # shutil.rmtree(f'resource/{path}')
+    # shutil.rmtree(f'output/{path}')
+    # shutil.rmtree(f'docs/{path}')
 
 # run_with_response('md5', RATask(id='8', callback='127.0.0.1:8000/tools/callback', repo='1'))

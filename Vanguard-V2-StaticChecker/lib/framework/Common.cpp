@@ -151,10 +151,39 @@ public:
     TraverseDecl(Context.getTranslationUnitDecl());
   }
 
+  explicit ASTStructLoad(ASTContext &Context) : Context(Context) {}
+
   // Implement the RecursiveASTVisitor interface to visit C++ classes.
   bool VisitRecordDecl(RecordDecl *decl) {
-    if(decl->isThisDeclarationADefinition() && decl->isStruct()) {
+    // 排除匿名结构体
+    if(decl->isThisDeclarationADefinition() && decl->isStruct() && !decl->getDeclName().isEmpty()) {
       structs.push_back(decl);
+    }
+    return true;
+  }
+
+
+  bool VisitTypedefDecl(TypedefDecl *TD) {
+    QualType QT = TD->getUnderlyingType();
+    const Type *Ty = QT.getTypePtrOrNull();
+    if (!Ty) return true;
+    // 检查是否是RecordType
+    if (const RecordType *RT = Ty->getAs<RecordType>()) {
+      RecordDecl *RD = RT->getDecl();
+      if (RD->getDeclName().isEmpty()) {
+        // 创建一个新的RecordDecl
+        SourceLocation Loc = RD->getLocation();
+        RecordDecl *NewRD = RecordDecl::Create(Context, TagTypeKind::TTK_Struct,
+                                               Context.getTranslationUnitDecl(),
+                                               RD->getBeginLoc(), RD->getEndLoc(),
+                                               &Context.Idents.get(TD->getNameAsString()));
+
+        // 复制原始结构体的成员到新的RecordDecl
+        for (auto Field : RD->fields()) {
+          NewRD->addDecl(Field);
+        }
+        structs.push_back(NewRD);
+      }
     }
     return true;
   }
@@ -162,6 +191,7 @@ public:
   const std::vector<RecordDecl *> &getStructs() const { return structs; }
 
 private:
+  ASTContext &Context;  // 存储AST上下文
   std::vector<RecordDecl *> structs;
 };
 
@@ -796,7 +826,7 @@ std::vector<CXXRecordDecl *> getRecords(ASTContext &Context) {
 }
 
 std::vector<RecordDecl *> getStructs(ASTContext &Context) {
-  ASTStructLoad load;
+  ASTStructLoad load(Context);
   load.HandleTranslationUnit(Context);
   return load.getStructs();
 }

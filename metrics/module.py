@@ -66,6 +66,7 @@ You'd better consider the following workflow:
 Please Note:
 - If all functions are related to the module tightly, you don't need to remove any functions.
 - #### Functions is a list of function names included in this module. Please use the full function name with the return type and parameters, not the abbreviation.
+- You can revise the content in #### Description if it's not consistent with the answers to the questions.
 - The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
 - Don't write new Level 3 or Level 4 headings. Don't write anything outside the format. Do not output descriptions of improvements.
 
@@ -83,7 +84,7 @@ class ModuleMetric(Metric):
     def eva(self, ctx):
         existed_modules_doc = ctx.load_module_docs()
         if existed_modules_doc:
-            logger.info(f'[FunctionMetric] load modules: {len(existed_modules_doc)}')
+            logger.info(f'[FunctionMetric] load modules, modules count: {len(existed_modules_doc)}')
             return
         # 提取所有用户可见的函数
         apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible, ctx.function_map.keys()))
