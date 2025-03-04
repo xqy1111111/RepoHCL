@@ -51,8 +51,8 @@ def fetch_repo(repo: str) -> str:
 @app.post('/tools/hcl')
 async def hcl(req: RATask, background_tasks: BackgroundTasks) -> RAResult:
     try:
-        # path = fetch_repo(req.repo)
-        path = 'md5'
+        path = fetch_repo(req.repo)
+        # path = 'md5'
         logger.info(f'fetch repo {req.repo} to {path}')
     except Exception as e:
         logger.error(f'fail to get `{req.repo}`, err={e}')
