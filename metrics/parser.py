@@ -204,9 +204,6 @@ class ClangParser(Metric):
         clazz_typedefs_map = self._load_clazz_typedefs(ctx.output_path, ctx.resource_path)
         logger.info(f'[ClangParser] typedef size: {len(clazz_typedefs_map)}')
         ctx.function_map = self._load_functions(ctx.output_path, ctx.resource_path, clazz_typedefs_map)
-        logger.info(f'[ClangParser] function size: {len(ctx.function_map)}')
-        ctx.clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.function_map, clazz_typedefs_map)
-        logger.info(f'[ClangParser] class size: {len(ctx.clazz_map)}')
         # ctx.callgraph = self._load_sample_callgraph(ctx.output_path, ctx.function_map, [
         #     Symbol(base='xmlDocPtr xmlReadFile(const char * URL, const char * encoding, int options)'),
         #     Symbol(base='xmlDocPtr xmlNewDoc(const xmlChar * version)'),
@@ -228,9 +225,12 @@ class ClangParser(Metric):
         #     Symbol(base='xmlXPathObjectPtr xmlXPathEvalExpression(const xmlChar * str, xmlXPathContextPtr ctxt)'),
         # ])
         #
-        # ctx.function_map = {k: v for k, v in ctx.function_map.items() if k.base in ctx.callgraph.nodes}
         ctx.callgraph = self._load_callgraph(ctx.output_path, ctx.function_map)
+        ctx.function_map = {k: v for k, v in ctx.function_map.items() if k.base in ctx.callgraph.nodes}
+        logger.info(f'[ClangParser] function size: {len(ctx.function_map)}')
         logger.info(f'[ClangParser] callgraph size: {len(ctx.callgraph.nodes)}, {len(ctx.callgraph.edges)}')
+        ctx.clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.function_map, clazz_typedefs_map)
+        logger.info(f'[ClangParser] class size: {len(ctx.clazz_map)}')
         ctx.clazz_callgraph = self._load_clazz_callgraph(ctx.clazz_map)
         logger.info(f'[ClangParser] class callgraph size: {len(ctx.clazz_callgraph.nodes)}, {len(ctx.clazz_callgraph.edges)}')
 
