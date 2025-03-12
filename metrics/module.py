@@ -68,7 +68,8 @@ Please Note:
 - #### Functions is a list of function names included in this module. Please use the full function name with the return type and parameters, not the abbreviation.
 - You can revise the content in #### Description if it's not consistent with the answers to the questions.
 - The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
-- Don't write new Level 3 or Level 4 headings. Don't write anything outside the format. Do not output descriptions of improvements.
+- Don't write new Level 3 or Level 4 headings. Don't write anything outside the format. 
+- Do not output descriptions of improvements.
 
 
 Here is the documentation of the module you need to enhance:
@@ -80,6 +81,7 @@ Here is the documentation of the functions referenced in the module:
 {functions_doc}
 '''
 
+
 class ModuleMetric(Metric):
     def eva(self, ctx):
         existed_modules_doc = ctx.load_module_docs()
@@ -90,7 +92,8 @@ class ModuleMetric(Metric):
         apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible, ctx.function_map.keys()))
         logger.info(f'[ModuleMetric] gen doc for modules, apis count: {len(apis)}')
         # 使用函数描述组织上下文
-        api_docs = reduce(lambda x, y: x + y, map(lambda a: f'- {a.base}\n > {ctx.load_function_doc(a).description}\n\n', apis))
+        api_docs = reduce(lambda x, y: x + y,
+                          map(lambda a: f'- {a.base}\n > {ctx.load_function_doc(a).description}\n\n', apis))
         prompt = modules_summarize_prompt.format(api_docs=api_docs)
         # 生成模块文档
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
@@ -106,15 +109,16 @@ class ModuleMetric(Metric):
             m = modules[i]
             # 使用完整函数文档组织上下文
             functions_doc = []
+            print(m.functions)
             for f in m.functions:
                 functions_doc.append(ctx.load_function_doc(Symbol(base=f)).markdown())
             functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')
             # 使用原模块文档组织上下文
-            module_doc=prefix_with(m.markdown(), '> ')
+            module_doc = prefix_with(m.markdown(), '> ')
             prompt2 = modules_enhance_prompt.format(module_doc=module_doc, functions_doc=functions_doc)
             # 生成模块文档
             res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
             doc = ModuleDoc.from_chapter(res)
             # 保存模块文档
             ctx.save_module_doc(doc)
-            logger.info(f'[ModuleMetric] gen doc for module {i}: {m.name}')
+            logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(modules)}: {m.name}')

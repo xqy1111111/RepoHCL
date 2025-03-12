@@ -1,5 +1,4 @@
 import re
-from typing import List
 
 from loguru import logger
 
@@ -114,9 +113,12 @@ Please Note:
 - Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Do not output descriptions of improvements or summary in the end.
 '''
 
+
+
+
 class RepoMetric(Metric):
     def eva(self, ctx):
-        existed_repo_doc =  ctx.load_repo_doc()
+        existed_repo_doc = ctx.load_repo_doc()
         if existed_repo_doc:
             logger.info(f'[RepoMetric] load repo')
             return
@@ -141,7 +143,8 @@ class RepoMetric(Metric):
         logger.info(f'[RepoMetric] gen doc for repo, questions inited')
         question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
 
-        questions = list(map(lambda x: f'**Question**: {x.group(1)}. {x.group(2)}', question_pattern.finditer(questions_doc)))
+        questions = list(
+            map(lambda x: f'**Question**: {x.group(2)}. {x.group(1)}', question_pattern.finditer(questions_doc)))
 
         def read_functions_md(name: str):
             return ctx.load_function_doc(Symbol(base=name)).markdown()
@@ -175,7 +178,7 @@ class RepoMetric(Metric):
             q_prompt = questions[i]
             answer = toolLLM.add_user_msg(q_prompt).ask()
             questions_with_answer.append(f'- {q_prompt}\n > **Answer**: {answer}')
-            logger.info(f'[RepoMetric] answer question {i}')
+            logger.info(f'[RepoMetric] answer question {i + 1}')
         qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
         if ProjectSettings().is_debug():

@@ -5,6 +5,7 @@
 #include <clang/AST/StmtVisitor.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendActions.h>
+#include <regex>
 
 #include <fstream>
 #include <iostream>
@@ -974,20 +975,109 @@ std::string getFullName(FunctionDecl *FD) {
   return name;
 }
 
-std::string getPrettyName(FunctionDecl *FD) {
-  std::string name = FD->getQualifiedNameAsString() + "(";
-  //对于无参数的函数，避免其fullname后出现不必要的空格
-  for (auto param = FD->param_begin(); param != FD->param_end(); param++) {
-    name = name + (*param)->getOriginalType().getAsString() + " " + (*param)->getNameAsString() + ", ";
-  }
-  if(!FD->param_empty()){
-    name.resize(name.size() - 2);
-  }
-  name = name + ")";
-  //填入返回值类型
-  name = FD->getReturnType().getAsString() + " " + name;
-  return strhelper::trim(name);
+
+std::string getTypeSpelling(QualType T, ASTContext &Context) {
+    std::string TypeStr;
+    llvm::raw_string_ostream OS(TypeStr);
+    T.print(OS, Context.getPrintingPolicy());
+    return OS.str();
 }
+
+std::string getPrettyName(FunctionDecl *FD) {
+    ASTContext &Context = FD->getASTContext();
+    std::string Result;
+
+    // 获取并添加返回值类型的字符串表示
+    QualType ReturnType = FD->getReturnType();
+    Result += getTypeSpelling(ReturnType, Context) + " ";
+
+    // 添加函数名
+    Result += FD->getNameAsString() + "(";
+
+    // 遍历参数列表并添加每个参数的类型和名称
+    for (unsigned i = 0, e = FD->getNumParams(); i != e; ++i) {
+        ParmVarDecl *Param = FD->getParamDecl(i);
+        QualType ParamTy = Param->getType();
+
+        // 添加参数类型
+        Result += getTypeSpelling(ParamTy, Context);
+
+        // 添加空格后跟参数名称
+        Result += " " + Param->getNameAsString();
+
+        if (i < e - 1) { // 如果不是最后一个参数，则添加逗号和空格
+            Result += ", ";
+        }
+    }
+
+    Result += ")"; // 结束函数签名
+
+    return Result;
+}
+
+std::string getOriginName(FunctionDecl *FD) {
+    ASTContext &context = FD->getASTContext();
+    SourceManager &sm = context.getSourceManager();
+    // 获取函数声明的源码范围
+    clang::SourceRange Range = FD->getSourceRange();
+    // 获取源码文本
+    std::string FullDeclaration = clang::Lexer::getSourceText(
+        clang::CharSourceRange::getCharRange(Range), sm, clang::LangOptions()
+    ).str();
+    size_t EndPos = FullDeclaration.find_first_of("{");
+    if (EndPos != std::string::npos) {
+      FullDeclaration = FullDeclaration.substr(0, EndPos);
+    }
+    // 删除前后的空格、换行、制表符
+    FullDeclaration = std::regex_replace(FullDeclaration, std::regex("^\\s+|\\s+$"), "");
+    // 删除其中的换行和制表符
+    FullDeclaration = std::regex_replace(FullDeclaration, std::regex("[\n\r\t]"), "");
+    // 将","替换为", "
+    FullDeclaration = std::regex_replace(FullDeclaration, std::regex(","), ", ");
+    // 将连续的空格改为一个空格
+    FullDeclaration = std::regex_replace(FullDeclaration, std::regex("\\s+"), " ");
+    return FullDeclaration;
+}
+
+//std::string getQualifiedName(const clang::QualType &QT) {
+//    std::string TypeStr;
+//    const clang::Type *type = QT.getTypePtrOrNull();
+//    if (!type)
+//        return "<null>";
+//
+//    // 将类型转换为字符串表示形式
+//    QT.getAsStringInternal(TypeStr, clang::PrintingPolicy(clang::LangOptions()));
+//    return TypeStr;
+//}
+//
+//std::string getPrettyName(clang::FunctionDecl *FD) {
+//    std::string PrettyName;
+//
+//    // 获取并添加返回类型的全限定名
+//    PrettyName += getQualifiedName(FD->getReturnType()) + " ";
+//
+//    // 添加函数名
+//    PrettyName += FD->getNameAsString() + "(";
+//
+//    // 遍历参数列表
+//    bool isFirstParam = true;
+//    for (auto *param : FD->parameters()) {
+//        if (!isFirstParam) {
+//            PrettyName += ", ";
+//        }
+//        isFirstParam = false;
+//
+//        // 添加参数类型和名称
+//        PrettyName += getQualifiedName(param->getType());
+//        PrettyName += " ";
+//        PrettyName += param->getNameAsString();
+//    }
+//
+//    PrettyName += ");";
+//
+//    return PrettyName;
+//}
+
 
 }// end of namespace common
 

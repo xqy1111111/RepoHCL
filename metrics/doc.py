@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from abc import abstractmethod, ABC
-from pyexpat import features
 from typing import List, Optional
 
 from pydantic import BaseModel, field_serializer
@@ -68,7 +67,8 @@ class ApiDoc(Doc):
         md = ''
         if self.parameters is not None:
             md += f'#### Parameters\n{self.parameters}\n\n'
-        md += '#### Code Details\n{details}\n\n'.format(details=self.detail)
+        if self.detail is not None:
+            md += '#### Code Details\n{details}\n\n'.format(details=self.detail)
         if self.example is not None:
             md += f'#### Example\n{self.example}\n\n'
         return md.strip()

@@ -34,6 +34,7 @@ class ProjectSettings:
     def is_debug(self):
         return self.log_level == LogLevel.DEBUG
 
+
 @dataclass
 class ChatCompletionSettings:
     # 环境变量写入密钥
@@ -44,3 +45,4 @@ class ChatCompletionSettings:
     model: str = field(default_factory=lambda: config('MODEL'))
     temperature: float = field(default_factory=lambda: config('MODEL_TEMPERATURE', cast=float, default=0))
     language: str = field(default_factory=lambda: config('MODEL_LANGUAGE', default='Chinese'))
+    history_max: int = field(default_factory=lambda: config('HISTORY_MAX', cast=int, default=-1))

@@ -207,6 +207,28 @@ class ClangParser(Metric):
         logger.info(f'[ClangParser] function size: {len(ctx.function_map)}')
         ctx.clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.function_map, clazz_typedefs_map)
         logger.info(f'[ClangParser] class size: {len(ctx.clazz_map)}')
+        # ctx.callgraph = self._load_sample_callgraph(ctx.output_path, ctx.function_map, [
+        #     Symbol(base='xmlDocPtr xmlReadFile(const char * URL, const char * encoding, int options)'),
+        #     Symbol(base='xmlDocPtr xmlNewDoc(const xmlChar * version)'),
+        #     Symbol(base='xmlNodePtr xmlNewNode(xmlNsPtr ns, const xmlChar * name)'),
+        #     Symbol(base='xmlChar * xmlGetProp(const xmlNode * node, const xmlChar * name)'),
+        #     Symbol(
+        #         base='int xmlSaveFormatFileEnc(const char * filename, xmlDocPtr cur, const char * encoding, int format)'),
+        #     Symbol(base='xmlNsPtr xmlSearchNs(xmlDocPtr doc, xmlNodePtr node, const xmlChar * nameSpace)'),
+        #     Symbol(base='xmlXPathObjectPtr xmlXPathEval(const xmlChar * str, xmlXPathContextPtr ctx)'),
+        #     Symbol(base='void xmlFreeDoc(xmlDocPtr cur)'),
+        #     Symbol(base='int xmlCharEncOutFunc(xmlCharEncodingHandler * handler, xmlBufferPtr out, xmlBufferPtr in)'),
+        #     Symbol(base='xmlNodePtr xmlAddChild(xmlNodePtr parent, xmlNodePtr cur)'),
+        #     Symbol(base='void xmlCleanupParser()'),
+        #     Symbol(base='int xmlSaveFile(const char * filename, xmlDocPtr cur)'),
+        #     Symbol(base='xmlDocPtr xmlReadFd(int fd, const char * URL, const char * encoding, int options)'),
+        #     Symbol(base='xmlAttrPtr xmlHasProp(const xmlNode * node, const xmlChar * name)'),
+        #     Symbol(base='xmlNodePtr xmlDocGetRootElement(const xmlDoc * doc)'),
+        #     Symbol(base='xmlXPathContextPtr xmlXPathNewContext(xmlDocPtr doc)'),
+        #     Symbol(base='xmlXPathObjectPtr xmlXPathEvalExpression(const xmlChar * str, xmlXPathContextPtr ctxt)'),
+        # ])
+        #
+        # ctx.function_map = {k: v for k, v in ctx.function_map.items() if k.base in ctx.callgraph.nodes}
         ctx.callgraph = self._load_callgraph(ctx.output_path, ctx.function_map)
         logger.info(f'[ClangParser] callgraph size: {len(ctx.callgraph.nodes)}, {len(ctx.callgraph.edges)}')
         ctx.clazz_callgraph = self._load_clazz_callgraph(ctx.clazz_map)
@@ -237,6 +259,8 @@ class ClangParser(Metric):
         logger.info(f'{resource_path} content:{str(os.listdir(resource_path))}')
         if os.path.exists(f'{resource_path}/configure'):
             cmd('./configure')
+        elif os.path.exists(f'{resource_path}/Configure'):
+            cmd('./Configure')
         elif os.path.exists(f'{resource_path}/CMakeLists.txt'):
             cmd('cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_PREFIX=/lib/llvm-9 .')
         if not os.path.exists(f'{resource_path}/Makefile'):
