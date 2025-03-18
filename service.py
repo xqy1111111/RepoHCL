@@ -42,6 +42,7 @@ class EvaResult(BaseModel):
     modules: List[Dict]
     repo: List[Dict]
 
+
 def fetch_repo(repo: str) -> str:
     save_path = uuid.uuid4().hex
     response = requests.get(repo)
@@ -77,14 +78,15 @@ def test2():
     print('hello')
     return 'hello'
 
+
 def run_with_response(path: str, req: RATask):
     try:
         ctx = EvaContext(doc_path=f'docs/{path}', resource_path=f'resource/{path}', output_path=f'output/{path}')
         eva(ctx)
         data = EvaResult(functions=list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.function_map.keys())),
-                            classes=list(map(lambda x: ctx.load_clazz_doc(x).model_dump(), ctx.clazz_map.keys())),
-                            modules=list(map(lambda x: x.model_dump(), ctx.load_module_docs())),
-                            repo=[ctx.load_repo_doc().model_dump()])
+                         classes=list(map(lambda x: ctx.load_clazz_doc(x).model_dump(), ctx.clazz_map.keys())),
+                         modules=list(map(lambda x: x.model_dump(), ctx.load_module_docs())),
+                         repo=[ctx.load_repo_doc().model_dump()])
 
         # 回调传结果，重试几次
         retry = 5
@@ -96,7 +98,7 @@ def run_with_response(path: str, req: RATask):
                                                   status=RAStatus.success.value,
                                                   message='ok',
                                                   result=data.model_dump_json()).model_dump_json(exclude_none=True,
-                                                                                           exclude_unset=True),
+                                                                                                 exclude_unset=True),
                                     headers={'Content-Type': 'application/json'})
                 logger.info(f'callback send, status:{res.status_code}, message:{res.text}')
                 break
@@ -114,17 +116,16 @@ def run_with_response(path: str, req: RATask):
     # shutil.rmtree(f'output/{path}')
     # shutil.rmtree(f'docs/{path}')
 
+
 # run_with_response('md5', RATask(id='8', callback='127.0.0.1:8000/tools/callback', repo='1'))
 
 class CompReq(BaseModel):
     s1: str
     s2: str
 
+
 class CompResult(BaseModel):
     result: str
-
-
-
 
 
 class CompareMetric:
@@ -166,7 +167,7 @@ Please Note:
         s = ''
         if len(ctx.repo):
             r = ctx.repo[0]
-            r['features'] = list(map(lambda x:x.strip('- '), r['features'].splitlines()))
+            r['features'] = list(map(lambda x: x.strip('- '), r['features'].splitlines()))
             s = RepoDoc.model_validate(r).markdown() + '\n'
         for f in ctx.functions:
             f_doc = ApiDoc.model_validate(f)
@@ -183,6 +184,7 @@ Please Note:
         llm = SimpleLLM(ChatCompletionSettings())
         res = llm.add_user_msg(p).ask()
         return res
+
 
 @app.get('/tools/comp')
 def comp(req: CompReq) -> CompResult:

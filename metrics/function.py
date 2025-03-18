@@ -45,34 +45,38 @@ class FunctionMetric(Metric):
             logger.info(f'[FunctionMetric] parse {symbol.base}: {i + 1}/{len(sorted_functions)}')
 
 
-doc_generation_instruction = (
-    "You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object. "
-    "The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.\n\n"
-    "Currently, you are in a project and the related hierarchical structure of this project is as follows\n"
-    "{project_structure}\n\n"
-    "The path of the document you need to generate in this project is {file_path}.\n"
-    'Now you need to generate a document for a Method, whose name is `{code_name}`.\n\n'
-    "The code of the Method is as follows:\n\n"
-    "```C++\n"
-    "{code}\n"
-    "```\n\n"
-    "{reference_letter}\n"
-    "{referencer_content}\n\n"
-    "Please generate a detailed explanation document for this Method based on the code of the target Method itself and combine it with its calling situation in the project.\n\n"
-    "Please write out the function of this Method briefly followed by a detailed analysis (including all details) to serve as the documentation for this part of the code.\n\n"
-    "The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:\n\n"
-    "> #### Description\n"
-    "> Briefly describe the Method in one sentence.\n"
-    "{parameters_note}"
-    "> #### Code Details\n"
-    "> Detailed and CERTAIN code analysis of the Method. {has_relationship}\n"
-    "> #### Example\n"
-    "> ```C++\n"
-    "> Mock possible usage examples of the Method with codes. {example}\n"
-    "> ```\n\n"
-    "Please note:\n"
-    "- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them.\n"
-    "- Don't add new Level 3 or Level 4 headings. Do not write anything outside the format\n")
+doc_generation_instruction = '''
+You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object.
+The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.
+Currently, you are in a project and the related hierarchical structure of this project is as follows:
+{project_structure}
+The path of the document you need to generate in this project is {file_path}.
+Now you need to generate a document for a Function, whose name is `{code_name}`.
+
+The code of the Function is as follows:
+```C++
+{code}
+```
+
+{reference_letter}
+{referencer_content}
+
+Please generate a detailed explanation document for this Function based on the code of the target Function itself and combine it with its calling situation in the project.
+Please write out the function of this Function briefly followed by a detailed analysis (including all details) to serve as the documentation for this part of the code.
+The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
+> #### Description
+> Briefly describe the Function in one sentence.
+{parameters_note}
+> #### Code Details
+> Detailed and CERTAIN code analysis of the Function. {has_relationship}
+> #### Example
+> ```C++
+> Mock possible usage examples of the Function with codes. {example}
+> ```
+Please note:
+- The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them.
+- Don't add new Level 3 or Level 4 headings. Do not write anything outside the format.
+'''
 
 
 class FunctionPromptBuilder:

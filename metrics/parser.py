@@ -75,9 +75,6 @@ class ClangParser(Metric):
         records = ClangParser._read_file(f'{output_path}/functions.json', resource_path)
         for k, v in records.items():
             params = []
-            # __internal_alias是clang内部的别名，TODO
-            if '__internal_alias' in k:
-                continue
             for p in v.get('parameters'):
                 literal = p.get('literal')
                 symbol = ClangParser._field_symbol_to_final(

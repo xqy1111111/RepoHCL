@@ -1,6 +1,6 @@
 #!/usr/bin python3
-import os
 import json
+import os
 
 # =====###### must run make before runing this script #####=====
 
@@ -64,10 +64,12 @@ if not os.path.exists(compile_commands_files):
     print("[-] compile_commands.json not exist!")
     exit(1)
 
+
 def logFormatErr():
     print("[-] compile_commands.json format error!")
     print("[-] expected json format below:")
     print(expected_json_format)
+
 
 with open(compile_commands_files, mode='r') as fr:
     ccjson = json.loads(fr.read())
@@ -76,60 +78,53 @@ if type(ccjson) is not list:
     logFormatErr()
     exit(1)
 
+filesets = set()
+
 for cc in ccjson:
-    cmdargs = cc.get("arguments") # ubuntu 18.04, bear 2.3.11
+    cmdargs = cc.get("arguments")  # ubuntu 18.04, bear 2.3.11
     directory = cc.get("directory")
     filename = cc.get("file")
+    if filename in filesets:
+        continue
+    filesets.add(filename)
 
     if cmdargs is None:
-        command = cc.get("command") # ubuntu 16.04, bear 2.1.5
+        command = cc.get("command")  # ubuntu 16.04, bear 2.1.5
         cmdargs = command.split(' ')
-
-    if None in [cmdargs, directory, filename]:
-        logFormatErr()
-        exit(1)
-    if "-o" in cmdargs:
-        # change C compile into clang and add option `-emit-ast`
-        if cmdargs[0].lower() in ["c++", "g++", "cpp", "cxx"]:
-            cmdargs[0] = ' '.join([env_clangplus, clang_emit_ast_opt])
-        else:
-            cmdargs[0] = ' '.join([env_clang, clang_emit_ast_opt])
-        # cmdargs[-1] = os.path.join(directory, filename)
-        for i, arg in enumerate(cmdargs):
-            if arg.startswith('"') and arg.endswith('"'):
-                cmdargs[i] = arg[1:-1]
-            elif arg.startswith("'") and arg.endswith("'"):
-                cmdargs[i] = arg[1:-1]
-        # change -o output file
-        # This script assumes that the `make` program has been run before running,
-        # so the file path must exist, no need to determine whether the path exists
-        outopt_idx = cmdargs.index("-o")
-        output_old = cmdargs[outopt_idx+1]
-        output_new = os.path.splitext(output_old)[0] + astfile_ext
-        if not os.path.isabs(output_old):
-            output_new = os.path.join(directory, output_new)
-        astFile_list.append(output_new)
-        cmdargs[outopt_idx+1] = output_new
-        # join all options into a new cmd
-        cmd_exe = ' '.join(cmdargs)
-        cmd_exe = cmd_exe.replace('"', r'\"') # e.g. -DMARCO="string", the double quotation marks should be escaped => -DMARCO=\"string\"
-        cmd_exe = cmd_exe.replace(r'\\"', r'\"') # in ubuntu 16.04, bear 2.1.5 will handle the double quotation, so here reverse last instructions
-        # cd directory
-        cmd_cd = ' '.join(["cd", directory])
-        abs_filepath = os.path.join(directory, filename)
-        abs_filepath = os.path.abspath(abs_filepath)
-        # print(cmd_exe)
-        buildast_sh_list.append(cmd_cd)
-        buildast_sh_list.append(cmd_exe + " && (")
-        buildast_sh_list.append("  echo \"[+] succ: " + abs_filepath + "\"")
-        buildast_sh_list.append(") || (")
-        buildast_sh_list.append("  echo \"[-] failed: " + abs_filepath + "\"")
-        buildast_sh_list.append("  kill -9 0")
-        buildast_sh_list.append(")")
-        buildast_sh_list.append("\n")
+    # change C compile into clang and add option `-emit-ast`
+    if cmdargs[0].lower() in ["c++", "g++", "cpp", "cxx"]:
+        cmdargs[0] = ' '.join([env_clangplus, clang_emit_ast_opt])
     else:
-        print("[-] Todo(Ops, not support!)")
-        exit(1)
+        cmdargs[0] = ' '.join([env_clang, clang_emit_ast_opt])
+    for i, arg in enumerate(cmdargs):
+        cmdargs[i] = arg.strip('\"\'')
+    default_ast_name = os.path.splitext(os.path.basename(filename))[0] + astfile_ext
+    if not os.path.isabs(default_ast_name):
+        default_ast_name = os.path.join(directory, default_ast_name)
+    astFile_list.append(default_ast_name)
+    if '-o' not in cmdargs:
+        cmdargs = cmdargs[:-1] + ["-o", default_ast_name] + [filename]
+    else:
+        cmdargs[cmdargs.index('-o') + 1] = default_ast_name
+    # join all options into a new cmd
+    cmd_exe = ' '.join(cmdargs)
+    cmd_exe = cmd_exe.replace('"',
+                              r'\"')  # e.g. -DMARCO="string", the double quotation marks should be escaped => -DMARCO=\"string\"
+    cmd_exe = cmd_exe.replace(r'\\"',
+                              r'\"')  # in ubuntu 16.04, bear 2.1.5 will handle the double quotation, so here reverse last instructions
+    # cd directory
+    cmd_cd = ' '.join(["cd", directory])
+    abs_filepath = os.path.join(directory, filename)
+    abs_filepath = os.path.abspath(abs_filepath)
+    # print(cmd_exe)
+    buildast_sh_list.append(cmd_cd)
+    buildast_sh_list.append(cmd_exe + " && (")
+    buildast_sh_list.append("  echo \"[+] succ: " + abs_filepath + "\"")
+    buildast_sh_list.append(") || (")
+    buildast_sh_list.append("  echo \"[-] failed: " + abs_filepath + "\"")
+    buildast_sh_list.append("  kill -9 0")
+    buildast_sh_list.append(")")
+    buildast_sh_list.append("\n")
 
 with open(buildast_sh_fn, mode='w', encoding="utf-8") as fw:
     fw.write('\n'.join(buildast_sh_list))
