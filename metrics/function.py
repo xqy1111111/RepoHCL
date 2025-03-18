@@ -58,15 +58,15 @@ The code of the Function is as follows:
 {code}
 ```
 
-{reference_letter}
-{referencer_content}
+{referenced}
+{referencer}
 
 Please generate a detailed explanation document for this Function based on the code of the target Function itself and combine it with its calling situation in the project.
 Please write out the function of this Function briefly followed by a detailed analysis (including all details) to serve as the documentation for this part of the code.
 The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
 > #### Description
 > Briefly describe the Function in one sentence.
-{parameters_note}
+{parameters}
 > #### Code Details
 > Detailed and CERTAIN code analysis of the Function. {has_relationship}
 > #### Example
@@ -99,25 +99,25 @@ class FunctionPromptBuilder:
 
     def referenced(self, referenced: List[ApiDoc]):
         if len(referenced) == 0:
-            self._prompt = self._prompt.replace('{reference_letter}', '')
+            self._prompt = self._prompt.replace('{referenced}', '')
             return self
         prompt = 'As you can see, the code calls the following methods, their docs and code are as following:\n\n'
         for reference_item in referenced:
             prompt += f'**Method**: `{reference_item.name}`\n\n' + '**Document**:\n\n' + '\n'.join(
                 list(map(lambda t: '> ' + t, reference_item.markdown()))) + '\n---\n'
-        self._prompt = self._prompt.replace('{reference_letter}', prompt)
+        self._prompt = self._prompt.replace('{referenced}', prompt)
         self._tag_referenced = True
         return self
 
     def referencer(self, referencer: List[ApiDoc]):
         if len(referencer) == 0:
-            self._prompt = self._prompt.replace('{referencer_content}', '')
+            self._prompt = self._prompt.replace('{referencer}', '')
             return self
         prompt = 'Also, the code has been called by the following methods, their code and docs are as following:\n'
         for referencer_item in referencer:
             prompt += f'**Method**: `{referencer_item.name}`\n\n' + '**Document**:\n\n' + '\n'.join(
                 list(map(lambda t: '> ' + t, referencer_item.markdown().split('\n')))) + '\n---\n'
-        self._prompt = self._prompt.replace('{referencer_content}', prompt)
+        self._prompt = self._prompt.replace('{referencer}', prompt)
         self._tag_referencer = True
         return self
 
@@ -134,13 +134,13 @@ class FunctionPromptBuilder:
 
     def parameters(self, params: List[FieldDef]):
         if len(params):
-            self._prompt = self._prompt.replace('{parameters_note}', prefix_with(
+            self._prompt = self._prompt.replace('{parameters}', prefix_with(
                 '#### Parameters\n'
                 '- Parameter1: XXX\n'
                 '- Parameter2: XXX\n'
                 '- ...\n', '> '))
         else:
-            self._prompt = self._prompt.replace('{parameters_note}', '')
+            self._prompt = self._prompt.replace('{parameters}', '')
         return self
 
     def code(self, code: str):
