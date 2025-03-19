@@ -51,6 +51,7 @@ class FuncDef:
     filename: str = ''
     beginLine: int = 0
     endLine: int = 0
+    declFile: str = ''
     # return_type: FieldDef
 
 

@@ -43,8 +43,12 @@
 └── README.md                  
 ```
 ### 使用说明
-- 项目基于OpenAI协议调用LLM，需在settings.py中设置调用的LLM服务的域名、模型、温度，并配置环境变量`OPENAI_API_KEY`作为密钥。默认采用阿里百炼。
-
-- 目前提供了docker/dockerfile.cg_python，可以对项目Vanguard-V2-StaticChecker进行一次完整的分析。本地运行依赖可参考该dockerfile。
-
+- 项目基于OpenAI协议调用LLM，需在.env中设置调用的LLM服务的域名、模型、温度，并配置环境变量`OPENAI_API_KEY`作为密钥。默认采用阿里百炼。
+- 目前提供了docker/dockerfile.cg_python，可以对测试项目md5进行一次完整的分析。本地运行依赖可参考该dockerfile。
 - 由于不同C/C++项目的编译方式不同，目前需要根据项目特征手动设置合适的命令以生成AST。
+
+### TODO
+- 识别API，基于API优化模块文档和对比文档
+- 增加验证环节，提高文档质量
+- 结合RAG生成仓库文档
+- 增加对其他语言的支持：RUST

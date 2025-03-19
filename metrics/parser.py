@@ -85,7 +85,7 @@ class ClangParser(Metric):
             with open(resource_path + '/' + v.get('filename'), 'r') as f:
                 lines = list(islice(f, int(v.get('beginLine')) - 1, int(v.get('endLine'))))
                 code = ''.join(lines).strip()
-            function_map[Symbol(base=k)] = FuncDef(symbol=Symbol(base=k), access='', params=params,
+            function_map[Symbol(base=k)] = FuncDef(symbol=Symbol(base=k), access='', params=params, declFile=v.get('declFilename'),
                                                    filename=v.get('filename'), code=code, visible=v.get('visible'),
                                                    beginLine=v.get('beginLine'), endLine=v.get('endLine'))
 

@@ -208,7 +208,6 @@ cJSON* qualifyType2JSON(QualType qt) {
 
 void saveCXXRecords(std::vector <std::string> &ASTs) {
     cJSON *records_json = cJSON_CreateObject();
-    int i = 0;
     int astNum = ASTs.size();
     for (std::string AST: ASTs) {
         std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
@@ -245,8 +244,6 @@ void saveCXXRecords(std::vector <std::string> &ASTs) {
             cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
             cJSON_AddItemToObject(records_json, name.c_str(), rj);
         }
-        i++;
-        process_bar(float(i) / astNum);
     }
     std::ofstream records_file("records.json");
     records_file << cJSON_Print(records_json);
@@ -254,7 +251,6 @@ void saveCXXRecords(std::vector <std::string> &ASTs) {
 
 void saveStructs(std::vector <std::string> &ASTs) {
     cJSON *structs_json = cJSON_CreateObject();
-    int i = 0;
     int astNum = ASTs.size();
     for (std::string AST: ASTs) {
         std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
@@ -281,8 +277,6 @@ void saveStructs(std::vector <std::string> &ASTs) {
             cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
             cJSON_AddItemToObject(structs_json, name.c_str(), rj);
         }
-        i++;
-        process_bar(float(i) / astNum);
     }
     std::ofstream structs_file("structs.json");
     structs_file << cJSON_Print(structs_json);
@@ -290,7 +284,6 @@ void saveStructs(std::vector <std::string> &ASTs) {
 
 void saveTypedefs(std::vector <std::string> &ASTs) {
     cJSON *typedefs_json = cJSON_CreateObject();
-    int i = 0;
     int astNum = ASTs.size();
     for (std::string AST: ASTs) {
         std::unique_ptr <ASTUnit> AU = common::loadFromASTFile(AST);
@@ -344,8 +337,6 @@ void saveTypedefs(std::vector <std::string> &ASTs) {
             cJSON_AddStringToObject(tj, "target", decl->getNameAsString().c_str());
             cJSON_AddItemToObject(typedefs_json, name.c_str(), tj);
         }
-        i++;
-        process_bar(float(i) / astNum);
     }
     std::ofstream typedefs_file("typedefs.json");
     typedefs_file << cJSON_Print(typedefs_json);
@@ -355,9 +346,7 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                        Config &configure)
         : resource(resource), c(configure) {
 
-    // 顺便列举全部函数体
     cJSON *functions_json = cJSON_CreateObject();
-    cJSON *structs_json = cJSON_CreateObject();
 
     max_size = std::stoi(configure.getOptionBlock("Framework")["queue_size"]);
     std::unordered_set <std::string> functionNames;
@@ -418,20 +407,28 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
             FunctionLoc FDLoc(FD, fileName, beginLine, endLine);
             saveFuncLocInfo(FDLoc);
 
-            // 获得函数体
-            if (FD->hasBody() && F->getFunctionType() == ASTFunction::NormalFunction) {
-                cJSON *fj = cJSON_CreateObject();
-                cJSON_AddNumberToObject(fj, "beginLine", beginLine);
-                cJSON_AddNumberToObject(fj, "endLine", endLine);
-                cJSON_AddStringToObject(fj, "filename", fileName.c_str());
-                cJSON_AddBoolToObject(fj, "visible", isFunctionInner(FD));
+            if(FD->isThisDeclarationADefinition()) {
+                std::string name = common::getPrettyName(FD);
+                cJSON *tj = cJSON_CreateObject();
+                FunctionDecl *previous = FD;
+                while(previous->getPreviousDecl()){
+                    previous = previous->getPreviousDecl();
+                }
+                ASTContext &context = previous->getASTContext();
+                SourceManager &sm = context.getSourceManager();
+                std::string declFileName = sm.getFilename(sm.getExpansionLoc(previous->getBeginLoc())).str();
+                cJSON_AddStringToObject(tj, "filename", fileName.c_str());
+                cJSON_AddNumberToObject(tj, "beginLine", beginLine);
+                cJSON_AddNumberToObject(tj, "endLine", endLine);
+                cJSON_AddBoolToObject(tj, "visible", isFunctionInner(FD));
+                cJSON_AddStringToObject(tj, "declFilename", declFileName.c_str());
                 cJSON *parameters = cJSON_CreateArray();
                 for(auto param: FD->parameters()){
                     cJSON_AddItemToArray(parameters, qualifyType2JSON(param->getType()));
                 }
-                cJSON_AddItemToObject(fj, "parameters", parameters);
-                cJSON_AddItemToObject(fj, "return", qualifyType2JSON(FD->getReturnType()));
-                cJSON_AddItemToObject(functions_json, common::getPrettyName(FD).c_str(), fj);
+                cJSON_AddItemToObject(tj, "parameters", parameters);
+                cJSON_AddItemToObject(tj, "return", qualifyType2JSON(FD->getReturnType()));
+                cJSON_AddItemToObject(functions_json, name.c_str(), tj);
             }
         }
 
@@ -440,11 +437,10 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
         process_bar(float(i) / astNum);
     }
 
+    resource.buildUseFunctions();
 
     std::ofstream functions_file("functions.json");
     functions_file << cJSON_Print(functions_json);
-
-    resource.buildUseFunctions();
 
     // save the CXXRecords and Structs
     saveCXXRecords(ASTs);

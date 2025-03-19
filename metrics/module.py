@@ -89,7 +89,8 @@ class ModuleMetric(Metric):
             logger.info(f'[FunctionMetric] load modules, modules count: {len(existed_modules_doc)}')
             return
         # 提取所有用户可见的函数
-        apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible, ctx.function_map.keys()))
+        apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible
+                                                   and ctx.function_map.get(x).declFile.endswith('.h'), ctx.function_map.keys()))
         logger.info(f'[ModuleMetric] gen doc for modules, apis count: {len(apis)}')
         # 使用函数描述组织上下文
         api_docs = reduce(lambda x, y: x + y,
@@ -109,7 +110,6 @@ class ModuleMetric(Metric):
             m = modules[i]
             # 使用完整函数文档组织上下文
             functions_doc = []
-            print(m.functions)
             for f in m.functions:
                 functions_doc.append(ctx.load_function_doc(Symbol(base=f)).markdown())
             functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')
