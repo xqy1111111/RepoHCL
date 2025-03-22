@@ -80,7 +80,7 @@ class SimpleLLM:
         if ProjectSettings().is_debug():
             print()
             with open('prompt.md', 'a') as d:
-                d.write('\n'.join(list(map(lambda s: s.get('content'), self._history))))
+                d.write('\n'.join(list(map(lambda s: s.get('content'), self._history))) + '\n\n---\n\n')
         return answer_content
 
     def add_file(self, path: str):

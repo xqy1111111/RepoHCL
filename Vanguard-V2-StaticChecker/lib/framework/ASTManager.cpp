@@ -122,27 +122,26 @@ void ASTBimap::removeVariable(ASTVariable *V) {
     variableRight.erase(VD);
 }
 
-bool isFunctionInner(FunctionDecl* FD) {
+bool isFunctionVisible(FunctionDecl* FD) {
     // 检查是否是外部链接
     if (FD->getFormalLinkage() == ExternalLinkage){
-        // 检查 Visibility 属性的值是否为 "hidden"
-        if (const auto *attr = FD->getAttr<VisibilityAttr>()) {
-            if(attr->getVisibility() == VisibilityAttr::Hidden){
-                return false;
-            }
+        // 检查静态修饰符
+        if (FD->isStatic()) {
+            return false;
         }
         // 检查是否是在匿名命名空间中，好像匿名空间不是外部链接，因此没有必要检查
-        if(isa<NamespaceDecl>(FD->getDeclContext())){
-            return !cast<NamespaceDecl>(FD->getDeclContext())->isAnonymousNamespace();
+        if(isa<NamespaceDecl>(FD->getDeclContext()) && cast<NamespaceDecl>(FD->getDeclContext())->isAnonymousNamespace()) {
+            return false;
         }
         // 检查是否在类中
-        if(FD->isCXXClassMember()){
+        if(FD->isCXXClassMember()) {
             return FD->getAccess() == AccessSpecifier::AS_public;
         }
         // 检查是否是函数模板
-        if(FD->getTemplatedKind() != FunctionDecl::TemplatedKind::TK_NonTemplate){
+        if(FD->getTemplatedKind() != FunctionDecl::TemplatedKind::TK_NonTemplate) {
             return false;
         }
+
         return true;
     }
     return false;
@@ -420,7 +419,7 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                 cJSON_AddStringToObject(tj, "filename", fileName.c_str());
                 cJSON_AddNumberToObject(tj, "beginLine", beginLine);
                 cJSON_AddNumberToObject(tj, "endLine", endLine);
-                cJSON_AddBoolToObject(tj, "visible", isFunctionInner(FD));
+                cJSON_AddBoolToObject(tj, "visible", isFunctionVisible(FD));
                 cJSON_AddStringToObject(tj, "declFilename", declFileName.c_str());
                 cJSON *parameters = cJSON_CreateArray();
                 for(auto param: FD->parameters()){

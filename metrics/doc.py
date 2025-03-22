@@ -136,7 +136,7 @@ class RepoDoc(Doc):
     @classmethod
     def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
         features_doc = cls.from_block(block, 'Features')
-        doc.features = list(map(lambda x: x.strip('- '), features_doc.splitlines()))
+        doc.features = list(filter(lambda x: len(x), map(lambda x: x.strip('- '), features_doc.splitlines())))
         return doc
 
     def markdown_hook(self) -> str:

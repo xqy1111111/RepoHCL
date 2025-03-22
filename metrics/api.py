@@ -21,12 +21,12 @@ class APIMetric(Metric):
     def eva(self, ctx):
         functions = ctx.function_map
         fs = list(filter(lambda x: functions.get(x).visible and functions.get(x).declFile.endswith('.h'), functions.keys()))
-        apis = []
-        llm = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt)
-        for s in fs:
-            doc = ctx.load_function_doc(s)
-            res = llm.add_user_msg(prefix_with(doc.markdown(), '> ')).ask(lambda x: x.strip().splitlines()[0])
-            logger.info(f'[APIMetric] check {s.base} is api? {res}')
-            if res == '1':
-                apis.append(s)
+        apis = fs
+        # llm = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt)
+        # for s in fs:
+        #     doc = ctx.load_function_doc(s)
+        #     res = llm.add_user_msg(prefix_with(doc.markdown(), '> ')).ask(lambda x: x.strip().splitlines()[0])
+        #     logger.info(f'[APIMetric] check {s.base} is api? {res}')
+        #     if res == '1':
+        #         apis.append(s)
         logger.info(f'[APIMetric] find {len(apis)}/{len(functions)} apis')

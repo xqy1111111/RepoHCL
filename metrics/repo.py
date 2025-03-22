@@ -76,7 +76,7 @@ The software have the following core modules:
 Please answer the questions based on the documentation of the software.
 
 Please Note:
-- When answering a question, you should first answer the conclusion.
+- When answering a question, you should first draw your conclusion in one sentence.
 - Each question should be answered in only one paragraph.
 '''
 
@@ -182,7 +182,7 @@ class RepoMetric(Metric):
         qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
         if ProjectSettings().is_debug():
-            with open(f'{ctx.doc_path}/repo-3.md', 'w') as f:
+            with open(f'{ctx.doc_path}/repo-2.md', 'w') as f:
                 f.write(qa_doc)
         prompt3 = repo_enhance_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '), qa=prefix_with(qa_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt3).ask()
