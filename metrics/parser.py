@@ -221,7 +221,6 @@ class ClangParser(Metric):
         #     Symbol(base='xmlXPathContextPtr xmlXPathNewContext(xmlDocPtr doc)'),
         #     Symbol(base='xmlXPathObjectPtr xmlXPathEvalExpression(const xmlChar * str, xmlXPathContextPtr ctxt)'),
         # ])
-        #
         ctx.callgraph = self._load_callgraph(ctx.output_path, ctx.function_map)
         ctx.function_map = {k: v for k, v in ctx.function_map.items() if k.base in ctx.callgraph.nodes}
         logger.info(f'[ClangParser] function size: {len(ctx.function_map)}')

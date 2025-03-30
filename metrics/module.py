@@ -4,7 +4,6 @@ from typing import List
 from loguru import logger
 
 from utils import SimpleLLM, prefix_with, ChatCompletionSettings
-from utils.settings import ProjectSettings
 from .doc import ModuleDoc
 from .metric import Metric, Symbol
 
@@ -83,15 +82,18 @@ Here is the documentation of the functions referenced in the module:
 
 
 class ModuleMetric(Metric):
-    def eva(self, ctx):
-        existed_modules_doc = ctx.load_module_docs()
-        if existed_modules_doc:
-            logger.info(f'[FunctionMetric] load modules, modules count: {len(existed_modules_doc)}')
+    _v1_draft: str = 'modules-v1-draft.md'
+
+    def _draft(self, ctx):
+        existed_modules_doc = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
+        if len(existed_modules_doc):
+            logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_modules_doc)}')
             return
         # 提取所有用户可见的函数
         apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible
-                                                   and ctx.function_map.get(x).declFile.endswith('.h'), ctx.function_map.keys()))
-        logger.info(f'[ModuleMetric] gen doc for modules, apis count: {len(apis)}')
+                                                   and ctx.function_map.get(x).declFile.endswith('.h'),
+                                         ctx.function_map.keys()))
+        logger.info(f'[ModuleMetric] gen drafts for modules, apis count: {len(apis)}')
         # 使用函数描述组织上下文
         api_docs = reduce(lambda x, y: x + y,
                           map(lambda a: f'- {a.base}\n > {ctx.load_function_doc(a).description}\n\n', apis))
@@ -100,14 +102,19 @@ class ModuleMetric(Metric):
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         modules = ModuleDoc.from_doc(res)
         # 保存模块文档初稿
-        if ProjectSettings().is_debug():
-            with open(f'{ctx.doc_path}/modules-0.md', 'w') as f:
-                for m in modules:
-                    f.write(m.markdown() + '\n')
-        logger.info(f'[ModuleMetric] gen doc for modules, modules count: {len(modules)}')
+        with open(f'{ctx.doc_path}/{self._v1_draft}', 'w') as f:
+            for m in modules:
+                f.write(m.markdown() + '\n')
+        logger.info(f'[ModuleMetric] gen drafts for modules, modules count: {len(modules)}')
+
+    def _enhance(self, ctx):
+        existed_modules_doc = ctx.load_module_docs()
+        if len(existed_modules_doc):
+            logger.info(f'[ModuleMetric] load docs, modules count: {len(existed_modules_doc)}')
+            return
+        drafts = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
         # 优化模块文档
-        for i in range(len(modules)):
-            m = modules[i]
+        for i, m in enumerate(drafts):
             # 使用完整函数文档组织上下文
             functions_doc = []
             for f in m.functions:
@@ -121,4 +128,8 @@ class ModuleMetric(Metric):
             doc = ModuleDoc.from_chapter(res)
             # 保存模块文档
             ctx.save_module_doc(doc)
-            logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(modules)}: {m.name}')
+            logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(drafts)}: {m.name}')
+
+    def eva(self, ctx):
+        self._draft(ctx)
+        self._enhance(ctx)

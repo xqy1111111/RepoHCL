@@ -9,9 +9,9 @@ from loguru import logger
 from pydantic import BaseModel
 
 from main import eva
-from metrics import EvaContext, ApiDoc
+from metrics import EvaContext, ApiDoc, ModuleDoc
 from metrics.doc import RepoDoc
-from utils import resolve_archive, prefix_with, SimpleLLM, ChatCompletionSettings
+from utils import resolve_archive, prefix_with, SimpleLLM, ChatCompletionSettings, SimpleRAG, RagSettings
 
 app = FastAPI()
 
@@ -132,6 +132,10 @@ class CompareMetric:
     _prompt = '''
 You are an expert in software development.
 Below are two software with similar functions. 
+They may have different solutions to the same problem, for example, zip and tar are different methods for decompression.
+They may be old and latest versions of the same software and therefore differ in capabilities.
+
+Your task is to distinguish the similarities and differences between the functions of the two software and tell me which should be used in which scenarios.
 
 > ## Software 1
 {s1}
@@ -139,8 +143,7 @@ Below are two software with similar functions.
 > ## Software 2
 {s2}
 
-You can see the function documents of each software. 
-Your task is to distinguish the similarities and differences between the functions of the two software and explain them with the help of a table.
+Please compare the two software and write a comparison report with the help of a table
 The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
 
 > | FEATURE POINTS | Software 1 | Software 2 |
@@ -154,6 +157,13 @@ The standard format is in the Markdown reference paragraph below, and you do not
 > Summary
 > - Software 1 is better because ...
 > - Software 2 should be used in XXX scenarios because ...
+
+You'd better consider the following workflow:
+1. Understand the Software. Read through the documents of each software to understand their core functionalities.
+2. Summarize the Feature Points. Identify the key feature points of each software from the modules documentation.
+3. Find the same Feature Points. Compare the performance of the same Feature Points in the two software. 
+4. Find the different Feature Points. Identify the Feature Points that only one software has.
+5. Write a Summary. Summarize the comparison and give your suggestions.
 
 Please Note:
 - For a feature point, if one software performs better, use **bold** to highlight its performance.
@@ -169,12 +179,12 @@ Please Note:
             r = ctx.repo[0]
             r['features'] = list(map(lambda x: x.strip('- '), r['features'].splitlines()))
             s = RepoDoc.model_validate(r).markdown() + '\n'
-        for f in ctx.functions:
-            f_doc = ApiDoc.model_validate(f)
-            f_doc.parameters = None
-            f_doc.example = None
-            f_doc.detail = None
-            s += f_doc.markdown() + '\n'
+        for m in ctx.modules:
+            m['functions'] = list(map(lambda x: x.strip('- '), m['functions'].splitlines()))
+            m = ModuleDoc.model_validate(m)
+            m.example = None
+            m.functions = []
+            s += m.markdown() + '\n'
         return prefix_with(s, '> ')
 
     def eva(self, ctx1: EvaResult, ctx2: EvaResult) -> str:

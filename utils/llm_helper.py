@@ -1,9 +1,11 @@
 import json
+import time
 from typing import Callable
 
 from loguru import logger
 from openai import OpenAI, Stream
 from openai.types.chat import ChatCompletionChunk
+from requests import ReadTimeout
 
 from .settings import ProjectSettings, ChatCompletionSettings
 
@@ -43,13 +45,18 @@ class SimpleLLM:
                 model=self._setting.model,
                 messages=self._history,
                 temperature=self._setting.temperature,
-                stream=True
+                stream=True,
+                stream_options={'include_usage': True}
             )
             res = self._get_stream_response(response)
             if post_processor:
                 res = post_processor(res)
             self._add_response(res)
             return res
+        except ReadTimeout as e:
+            logger.warning(f"[SimpleLLM] Timeout in chat call.")
+            time.sleep(1)
+            return self.ask(post_processor)
         except Exception as e:
             logger.error(f"[SimpleLLM] Error in chat call: {e}")
             raise e
@@ -58,27 +65,34 @@ class SimpleLLM:
         is_thinking = False
         answer_content = ''
         for chunk in response:
-            delta = chunk.choices[0].delta
-            if hasattr(delta, 'reasoning_content') and delta.reasoning_content is not None:
-                if not ProjectSettings().is_debug():
-                    continue
-                # 打印思考过程
-                if not is_thinking:
-                    print('=' * 10 + 'thinking' + '=' * 10)
-                    is_thinking = True
-                print(delta.reasoning_content, end='', flush=True)
-            else:
-                answer_content += delta.content
-                if not ProjectSettings().is_debug():
-                    continue
-                # 打印回复过程
-                if is_thinking:
-                    print('\n' + '=' * 10 + 'answering' + '=' * 10)
-                    is_thinking = False
-                print(delta.content, end='', flush=True)
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'reasoning_content') and delta.reasoning_content is not None:
+                    if not ProjectSettings().is_debug():
+                        continue
+                    # 打印思考过程
+                    if not is_thinking:
+                        print('=' * 10 + 'thinking' + '=' * 10)
+                        is_thinking = True
+                    print(delta.reasoning_content, end='', flush=True)
+                else:
+                    answer_content += delta.content
+                    if not ProjectSettings().is_debug():
+                        continue
+                    # 打印回复过程
+                    if is_thinking:
+                        print('\n' + '=' * 10 + 'answering' + '=' * 10)
+                        is_thinking = False
+                    print(delta.content, end='', flush=True)
+
+
+            if chunk.usage:
+                if ProjectSettings().is_debug():
+                    print()
+                logger.debug(
+                    f'[SimpleLLM] chat {chunk.id}: token usage(prompt {chunk.usage.prompt_tokens}, response {chunk.usage.completion_tokens}')
 
         if ProjectSettings().is_debug():
-            print()
             with open('prompt.md', 'a') as d:
                 d.write('\n'.join(list(map(lambda s: s.get('content'), self._history))) + '\n\n---\n\n')
         return answer_content
@@ -94,6 +108,7 @@ class SimpleLLM:
             raise e
 
 
+# TODO, 未接入流式API，不支持debug
 class ToolsLLM(SimpleLLM):
     def __init__(self, setting: ChatCompletionSettings, tools, tools_map):
         self._tools = tools

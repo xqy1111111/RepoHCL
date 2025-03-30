@@ -39,10 +39,10 @@ class Doc(ABC, BaseModel):
 
     def markdown(self) -> str:
         md = f'### {self.name}\n#### Description\n{self.description}\n\n'
-        return md + self.markdown_hook()
+        return md + self._markdown_hook()
 
     @abstractmethod
-    def markdown_hook(self) -> str:
+    def _markdown_hook(self) -> str:
         pass
 
     @classmethod
@@ -55,15 +55,17 @@ class ApiDoc(Doc):
     detail: Optional[str] = None
     example: Optional[str] = None
     parameters: Optional[str] = None
+    code: Optional[str] = None
 
     @classmethod
     def from_chapter_hook(cls, doc: ApiDoc, block: str) -> ApiDoc:
         doc.detail = cls.from_block(block, 'Code Details')
         doc.example = cls.from_block(block, 'Example')
         doc.parameters = cls.from_block(block, 'Parameters')
+        doc.code = cls.from_block(block, 'Source Code')
         return doc
 
-    def markdown_hook(self) -> str:
+    def _markdown_hook(self) -> str:
         md = ''
         if self.parameters is not None:
             md += f'#### Parameters\n{self.parameters}\n\n'
@@ -71,6 +73,8 @@ class ApiDoc(Doc):
             md += '#### Code Details\n{details}\n\n'.format(details=self.detail)
         if self.example is not None:
             md += f'#### Example\n{self.example}\n\n'
+        if self.code is not None:
+            md += f'#### Source Code\n{self.code}\n\n'
         return md.strip()
 
     @classmethod
@@ -88,7 +92,7 @@ class ClazzDoc(Doc):
         doc.attributes = cls.from_block(block, 'Attributes')
         return doc
 
-    def markdown_hook(self) -> str:
+    def _markdown_hook(self) -> str:
         md = ''
         if self.attributes is not None:
             md += f'#### Attributes\n{self.attributes}\n\n'
@@ -115,9 +119,10 @@ class ModuleDoc(Doc):
         doc.example = cls.from_block(block, 'Use Case')
         return doc
 
-    def markdown_hook(self) -> str:
+    def _markdown_hook(self) -> str:
         md = ''
-        md += '#### Functions\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.functions)))
+        if self.functions:
+            md += '#### Functions\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.functions)))
         if self.example:
             md += f'#### Use Case\n{self.example}\n\n'
         return md.strip()
@@ -139,7 +144,7 @@ class RepoDoc(Doc):
         doc.features = list(filter(lambda x: len(x), map(lambda x: x.strip('- '), features_doc.splitlines())))
         return doc
 
-    def markdown_hook(self) -> str:
+    def _markdown_hook(self) -> str:
         md = '#### Features\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.features)))
         return md.strip()
 

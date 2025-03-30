@@ -46,3 +46,9 @@ class ChatCompletionSettings:
     temperature: float = field(default_factory=lambda: config('MODEL_TEMPERATURE', cast=float, default=0))
     language: str = field(default_factory=lambda: config('MODEL_LANGUAGE', default='Chinese'))
     history_max: int = field(default_factory=lambda: config('HISTORY_MAX', cast=int, default=-1))
+
+@dataclass
+class RagSettings:
+    tokenizer: str = field(default_factory=lambda: config('TOKENIZER', default='Amu/tao-8k'))
+    model: str = field(default_factory=lambda: config('TOKENIZER_MODEL', default='Amu/tao-8k'))
+    dim: int = field(default_factory=lambda: config('TOKENIZER_DIM', cast=int, default=1024))

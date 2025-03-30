@@ -1,7 +1,7 @@
 import os
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Dict, TypeVar, Type, Optional
+from typing import List, Dict, TypeVar, Optional, Type
 
 import networkx as nx
 
@@ -102,64 +102,60 @@ class EvaContext:
     clazz_callgraph: nx.DiGraph = None
     structure: str = None
 
-    def _save_doc(self, filename: str, doc: Doc):
-        f = f'{self.doc_path}/{filename}.{doc.doc_type()}.md'
-        os.makedirs(os.path.dirname(f), exist_ok=True)
-        with open(f, 'a') as t:
+    @staticmethod
+    def save_doc(filename: str, doc: Doc):
+        _dir = os.path.dirname(filename)
+        if _dir:
+            os.makedirs(_dir, exist_ok=True)
+        with open(filename, 'a') as t:
             t.write(doc.markdown() + '\n')
 
-    def _load_doc(self, filename: str, doc: Type[Doc]) -> List[Doc]:
-        f = f'{self.doc_path}/{filename}.{doc.doc_type()}.md'
-        if not os.path.exists(f):
+    @staticmethod
+    def load_docs(filename: str, doc_type: Type[Doc]) -> List[T]:
+        if not os.path.exists(filename):
             return []
-        with open(f, 'r') as t:
-            return doc.from_doc(t.read())
+        with open(filename, 'r') as t:
+            docs = doc_type.from_doc(t.read())
+            return docs
+
+    @staticmethod
+    def load_doc(symbol: Symbol, filename: str, doc: Type[Doc]) -> Optional[Doc]:
+        docs = EvaContext.load_docs(filename, doc)
+        for d in docs:
+            if d.name == symbol.base:
+                return d
+        return None
 
     def save_function_doc(self, symbol: Symbol, doc: ApiDoc):
         func_def = self.function_map.get(symbol)
-        self._save_doc(func_def.filename, doc)
+        self.save_doc(f'{self.doc_path}/{func_def.filename}.{ApiDoc.doc_type()}.md', doc)
 
     def load_function_doc(self, symbol: Symbol) -> Optional[ApiDoc]:
         func_def = self.function_map.get(symbol)
-        chapters = self._load_doc(func_def.filename, ApiDoc)
-        for c in chapters:
-            doc: ApiDoc = c
-            if doc.name == symbol.base:
-                return doc
-        return None
+        return self.load_doc(symbol, f'{self.doc_path}/{func_def.filename}.{ApiDoc.doc_type()}.md', ApiDoc)
 
     def save_clazz_doc(self, symbol: Symbol, doc: ClazzDoc):
         clazz_def = self.clazz_map.get(symbol)
-        self._save_doc(clazz_def.filename, doc)
+        self.save_doc(f'{self.doc_path}/{clazz_def.filename}.{ClazzDoc.doc_type()}.md', doc)
 
     def load_clazz_doc(self, symbol: Symbol) -> Optional[ClazzDoc]:
         clazz_def = self.clazz_map.get(symbol)
-        chapters = self._load_doc(clazz_def.filename, ClazzDoc)
-        for c in chapters:
-            doc: ClazzDoc = c
-            if doc.name == symbol.base:
-                return doc
-        return None
+        return self.load_doc(symbol, f'{self.doc_path}/{clazz_def.filename}.{ClazzDoc.doc_type()}.md', ClazzDoc)
 
     def save_module_doc(self, doc: ModuleDoc):
-        with open(f'{self.doc_path}/modules.md', 'a') as t:
-            t.write(doc.markdown() + '\n')
+        self.save_doc(f'{self.doc_path}/modules.md', doc)
 
-    def load_module_docs(self) -> Optional[List[ModuleDoc]]:
-        if not os.path.exists(f'{self.doc_path}/modules.md'):
-            return None
-        with open(f'{self.doc_path}/modules.md', 'r') as t:
-            return ModuleDoc.from_doc(t.read())
+    def load_module_docs(self) -> List[ModuleDoc]:
+        return self.load_docs(f'{self.doc_path}/modules.md', ModuleDoc)
 
     def save_repo_doc(self, doc):
-        with open(f'{self.doc_path}/repo.md', 'a') as t:
-            t.write(doc.markdown() + '\n')
+        self.save_doc(f'{self.doc_path}/repo.md', doc)
 
     def load_repo_doc(self) -> Optional[RepoDoc]:
-        if not os.path.exists(f'{self.doc_path}/repo.md'):
+        docs = self.load_docs(f'{self.doc_path}/repo.md', RepoDoc)
+        if len(docs) == 0:
             return None
-        with open(f'{self.doc_path}/repo.md', 'r') as t:
-            return RepoDoc.from_chapter(t.read())
+        return docs[0]
 
 
 class Metric(metaclass=ABCMeta):
