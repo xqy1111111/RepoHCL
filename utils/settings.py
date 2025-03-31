@@ -1,7 +1,9 @@
 from dataclasses import field, dataclass
 from enum import Enum
+from typing import Any
 
 from decouple import config
+from transformers import AutoTokenizer, AutoModel
 
 
 # 兼容python3.8
@@ -49,6 +51,6 @@ class ChatCompletionSettings:
 
 @dataclass
 class RagSettings:
-    tokenizer: str = field(default_factory=lambda: config('TOKENIZER', default='Amu/tao-8k'))
-    model: str = field(default_factory=lambda: config('TOKENIZER_MODEL', default='Amu/tao-8k'))
+    tokenizer: Any = field(default_factory=lambda: config('TOKENIZER', default='Amu/tao-8k', cast= lambda x: AutoTokenizer.from_pretrained(x)))
+    model: Any = field(default_factory=lambda: config('TOKENIZER_MODEL', default='Amu/tao-8k', cast=lambda x: AutoModel.from_pretrained(x)))
     dim: int = field(default_factory=lambda: config('TOKENIZER_DIM', cast=int, default=1024))

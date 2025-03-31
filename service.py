@@ -126,48 +126,44 @@ def run_with_response(path: str, req: RATask):
 # run_with_response('md5', RATask(id='8', callback='127.0.0.1:8000/tools/callback', repo='1'))
 
 class CompReq(BaseModel):
-    s1: str
-    s2: str
+    results: List[str]
     requestId: str
     callback: str
 
 
 class CompResult(BaseModel):
-    result: Optional[str]
     requestId: str
     status: int
     message: str
+    result: Optional[str] = None
 
 
 class CompareMetric:
     _prompt = '''
 You are an expert in software development.
-Below are two software with similar functions. 
+Below are multiple software with similar functions. 
 They may have different solutions to the same problem, for example, zip and tar are different methods for decompression.
 They may be old and latest versions of the same software and therefore differ in capabilities.
 
-Your task is to distinguish the similarities and differences between the functions of the two software and tell me which should be used in which scenarios.
+Your task is to distinguish the similarities and differences between the functions of the software and tell me which should be used in which scenarios.
 
-> ## Software 1
-{s1}
-> ---
-> ## Software 2
-{s2}
+{software}
 
 Please compare the two software and write a comparison report with the help of a table
 The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
 
-> | FEATURE POINTS | Software 1 | Software 2 |
-> | ---- | ---- | ---- |
-> | point1 | How Software 1 perform on point1 | How Software 2 perform on point1 |
-> | point2 | **How Software 1 perform on point2** | How Software 2 perform on point2 |
-> | point3 | How Software 1 perform on point3 | X  |
-> | point4 | X | How Software 2 perform on point4 |
-> | ... | ... | ... |
+> | FEATURE POINTS | Software 1 | Software 2 | ... |
+> | ---- | ---- | ---- | ... |
+> | point1 | How Software 1 perform on point1 | How Software 2 perform on point1 | ... |
+> | point2 | **How Software 1 perform on point2** | How Software 2 perform on point2 | ... |
+> | point3 | How Software 1 perform on point3 | X  | ... |
+> | point4 | X | How Software 2 perform on point4 | ... |
+> | ... | ... | ... | ... |
 >
 > Summary
 > - Software 1 is better because ...
 > - Software 2 should be used in XXX scenarios because ...
+> ...
 
 You'd better consider the following workflow:
 1. Understand the Software. Read through the documents of each software to understand their core functionalities.
@@ -196,23 +192,28 @@ Please Note:
             m.example = None
             m.functions = []
             s += m.markdown() + '\n'
-        return prefix_with(s, '> ')
+        return s
 
-    def eva(self, ctx1: EvaResult, ctx2: EvaResult) -> str:
-        s1 = self._sprompt(ctx1)
-        s2 = self._sprompt(ctx2)
-        p = self._prompt.format(s1=s1, s2=s2)
+    def eva(self, results: List[EvaResult]) -> str:
+        s = ''
+        for i, r in enumerate(results):
+            s += f'## Software {i+1}\n'
+            s += self._sprompt(r)
+            s += '---'
+        p = self._prompt.format(software=prefix_with(s, '> '))
         llm = SimpleLLM(ChatCompletionSettings())
         res = llm.add_user_msg(p).ask()
         return res
 
 
 @app.get('/tools/comp')
-def comp(req: CompReq):
+async def comp(req: CompReq, background_tasks: BackgroundTasks) -> CompResult:
+    background_tasks.add_task(do_comp, req=req)
+    return CompResult(requestId=req.requestId, status=RAStatus.received.value, message='task received')
+
+def do_comp(req: CompReq):
     try:
-        s1 = EvaResult.model_validate_json(req.s1)
-        s2 = EvaResult.model_validate_json(req.s2)
-        res = CompareMetric().eva(s1, s2)
+        res = CompareMetric().eva(list(map(lambda x: EvaResult.model_validate_json(x), req.results)))
         requests_with_retry(url=req.callback, content=CompResult(requestId=req.requestId, result=res, message='ok',
                                                                  status=RAStatus.success.value).model_dump_json())
     except Exception as e:

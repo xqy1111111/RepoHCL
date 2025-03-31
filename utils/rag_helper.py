@@ -18,8 +18,8 @@ class SimpleRAG:
         self._index = faiss.IndexFlatL2(setting.dim)
         self._dim = setting.dim
         self._embeddings = []
-        self._tokenizer = AutoTokenizer.from_pretrained(setting.tokenizer)
-        self._model = AutoModel.from_pretrained(setting.model)
+        self._tokenizer = setting.tokenizer
+        self._model = setting.model
         self._model.eval()
 
     def _encode_in_batches(self, docs: List[str], batch_size: int = 32) -> np.ndarray:
