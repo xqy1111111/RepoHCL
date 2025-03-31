@@ -9,9 +9,9 @@ from loguru import logger
 from pydantic import BaseModel
 
 from main import eva
-from metrics import EvaContext, ApiDoc, ModuleDoc
+from metrics import EvaContext, ModuleDoc
 from metrics.doc import RepoDoc
-from utils import resolve_archive, prefix_with, SimpleLLM, ChatCompletionSettings, SimpleRAG, RagSettings
+from utils import resolve_archive, prefix_with, SimpleLLM, ChatCompletionSettings
 
 app = FastAPI()
 
@@ -79,6 +79,23 @@ def test2():
     return 'hello'
 
 
+def requests_with_retry(url: str, content: str, retry: int = 5):
+    err = None
+    while retry > 0:
+        retry -= 1
+        try:
+            res = requests.post(url,
+                                data=content,
+                                headers={'Content-Type': 'application/json'})
+            logger.info(f'requests send, status:{res.status_code}, message:{res.text}')
+            return
+        except Exception as e:
+            err = e
+            logger.error(f'request fail, err={e}')
+            time.sleep(1)
+    raise Exception(f'Request Failed, err={err}')
+
+
 def run_with_response(path: str, req: RATask):
     try:
         ctx = EvaContext(doc_path=f'docs/{path}', resource_path=f'resource/{path}', output_path=f'output/{path}')
@@ -89,28 +106,17 @@ def run_with_response(path: str, req: RATask):
                          repo=[ctx.load_repo_doc().model_dump()])
 
         # 回调传结果，重试几次
-        retry = 5
-        while retry > 0:
-            retry -= 1
-            try:
-                res = requests.post(req.callback,
-                                    data=RAResult(id=req.id,
-                                                  status=RAStatus.success.value,
-                                                  message='ok',
-                                                  result=data.model_dump_json()).model_dump_json(exclude_none=True,
-                                                                                                 exclude_unset=True),
-                                    headers={'Content-Type': 'application/json'})
-                logger.info(f'callback send, status:{res.status_code}, message:{res.text}')
-                break
-            except Exception as e:
-                logger.error(f'request fail, err={e}')
-                time.sleep(1)
+        requests_with_retry(req.callback,
+                            content=RAResult(id=req.id,
+                                             status=RAStatus.success.value,
+                                             message='ok',
+                                             result=data.model_dump_json())
+                            .model_dump_json(exclude_none=True, exclude_unset=True))
     except Exception as e:
         logger.error(f'fail to generate doc for {path}, err={e}')
-        requests.post(req.callback,
-                      data=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(
-                          exclude_none=True, exclude_unset=True),
-                      headers={'Content-Type': 'application/json'})
+        requests_with_retry(req.callback,
+                            content=RAResult(id=req.id, status=RAStatus.fail.value, message=str(e)).model_dump_json(
+                                exclude_none=True, exclude_unset=True))
     # 清扫工作路径
     # shutil.rmtree(f'resource/{path}')
     # shutil.rmtree(f'output/{path}')
@@ -122,10 +128,15 @@ def run_with_response(path: str, req: RATask):
 class CompReq(BaseModel):
     s1: str
     s2: str
+    requestId: str
+    callback: str
 
 
 class CompResult(BaseModel):
-    result: str
+    result: Optional[str]
+    requestId: str
+    status: int
+    message: str
 
 
 class CompareMetric:
@@ -197,8 +208,14 @@ Please Note:
 
 
 @app.get('/tools/comp')
-def comp(req: CompReq) -> CompResult:
-    s1 = EvaResult.model_validate_json(req.s1)
-    s2 = EvaResult.model_validate_json(req.s2)
-    res = CompareMetric().eva(s1, s2)
-    return CompResult(result=res)
+def comp(req: CompReq):
+    try:
+        s1 = EvaResult.model_validate_json(req.s1)
+        s2 = EvaResult.model_validate_json(req.s2)
+        res = CompareMetric().eva(s1, s2)
+        requests_with_retry(url=req.callback, content=CompResult(requestId=req.requestId, result=res, message='ok',
+                                                                 status=RAStatus.success.value).model_dump_json())
+    except Exception as e:
+        logger.error(f'fail to compare doc for {req.requestId}, err={e}')
+        requests_with_retry(req.callback, content=CompResult(requestId=req.requestId, result=None, message=str(e),
+                                                             status=RAStatus.fail.value))

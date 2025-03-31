@@ -3,7 +3,7 @@ import shutil
 
 import click
 
-from metrics import EvaContext, ClangParser, FunctionMetric, StructureMetric, ClazzMetric, ModuleMetric, RepoMetric
+from metrics import EvaContext, ClangParser, FunctionMetric, StructureMetric, ClazzMetric, ModuleMetric, RepoV2Metric
 
 
 def response_with_gitbook(doc_path: str):
@@ -61,7 +61,7 @@ def eva(ctx: EvaContext):
     # 生成模块文档
     ModuleMetric().eva(ctx)
     # 生成仓库文档
-    RepoMetric().eva(ctx)
+    RepoV2Metric().eva(ctx)
 
 
 if __name__ == '__main__':

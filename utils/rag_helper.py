@@ -22,6 +22,19 @@ class SimpleRAG:
         self._model = AutoModel.from_pretrained(setting.model)
         self._model.eval()
 
+    def _encode_in_batches(self, docs: List[str], batch_size: int = 32) -> np.ndarray:
+        embeddings = []
+        for i in range(0, len(docs), batch_size):
+            # 获取当前批次的数据
+            batch_docs = docs[i:i + batch_size]
+            # 对当前批次进行编码
+            batch_embeddings = self._encode(batch_docs)
+            # 将当前批次的结果添加到结果列表中
+            embeddings.append(batch_embeddings)
+            logger.debug(f'[SimpleRAG] encode batch {i // batch_size + 1}/{len(docs) // batch_size + 1}')
+        # 将所有批次的结果合并为一个numpy数组
+        return np.concatenate(embeddings, axis=0)
+
     def _encode(self, docs: List[str]) -> np.ndarray:
         encoded_input = self._tokenizer(docs, padding=True, truncation=True, return_tensors='pt',
                                         max_length=self._model.config.max_position_embeddings)
@@ -35,19 +48,19 @@ class SimpleRAG:
         return text_embedding
 
     def add(self, docs: List[str]):
-        self._index.add(self._encode(docs))
-        logger.info(f'[JsonRAG] add {len(docs)} docs to index')
+        self._index.add(self._encode_in_batches(docs))
+        logger.info(f'[SimpleRAG] add {len(docs)} docs to index')
 
     def query(self, query: str, k=3) -> List[int]:
         query_embedding = self._encode([query])
         D, I = self._index.search(query_embedding, k)
         for i, (d, j) in enumerate(zip(D[0], I[0])):
-            logger.debug(f'[JsonRAG] similarity rank {i + 1}, distance: {d:.2f}, index: {j}')
-        logger.info(f'[JsonRAG] query finished')
+            logger.debug(f'[SimpleRAG] similarity rank {i + 1}, distance: {d:.2f}, index: {j}')
+        logger.info(f'[SimpleRAG] query finished')
         return I[0]
 
     def kmeans(self, docs: List[str]) -> List[List[int]]:
-        embeddings = self._encode(docs).astype(np.float32)
+        embeddings = self._encode_in_batches(docs).astype(np.float32)
         kmeans = faiss.Kmeans(self._dim, max(int(math.sqrt(len(docs)) / 2), 1), niter=20, verbose=True)
         kmeans.train(embeddings)
         D, I = kmeans.index.search(embeddings, 1)
