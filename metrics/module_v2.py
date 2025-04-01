@@ -89,12 +89,15 @@ class ModuleV2Metric(ModuleMetric):
         apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible
                                                    and ctx.function_map.get(x).declFile.endswith('.h'),
                                          ctx.function_map.keys()))
-        logger.info(f'[ModuleMetric] gen draft for modules, apis count: {len(apis)}')
+        if len(apis) == 0:
+            logger.warning(f'[ModuleV2Metric] no apis found, cannot generate modules docs')
+            return
+        logger.info(f'[ModuleV2Metric] gen draft for modules, apis count: {len(apis)}')
         rag = SimpleRAG(RagSettings())
-        logger.info('[ModuleMetric] clustering...')
+        logger.info('[ModuleV2Metric] clustering...')
         cluster = rag.kmeans(
             list(map(lambda x: x.name + ': ' + x.description, map(lambda x: ctx.load_function_doc(x), apis))))
-        logger.info(f'[ModuleMetric] cluster to {len(cluster)} groups')
+        logger.info(f'[ModuleV2Metric] cluster to {len(cluster)} groups')
         i = 1
         for g in cluster:
             # 使用函数描述组织上下文
@@ -108,19 +111,21 @@ class ModuleV2Metric(ModuleMetric):
             # 保存模块文档
             for doc in docs:
                 ctx.save_doc(f'{ctx.doc_path}/{self._v2_draft}', doc)
-                logger.info(f'[ModuleMetric] gen draft for module {i}: {doc.name}')
+                logger.info(f'[ModuleV2Metric] gen draft for module {i}: {doc.name}')
                 i += 1
 
     def _merge(self, ctx: EvaContext):
         existed_modules_doc = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
         if len(existed_modules_doc):
-            logger.info(f'[FunctionMetric] load modules, modules count: {len(existed_modules_doc)}')
+            logger.info(f'[ModuleV2Metric] load modules, modules count: {len(existed_modules_doc)}')
             return
         drafts = ctx.load_docs(f'{ctx.doc_path}/modules-v2-draft.md', ModuleDoc)
+        if len(drafts) == 0:
+            return
         prompt = modules_merge_prompt.format(
             module_doc=prefix_with('\n'.join(map(lambda x: x.markdown(), drafts)), '>'))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask(lambda x: x.replace('---', '').strip())
         docs = ModuleDoc.from_doc(res)
         for doc in docs:
             ctx.save_doc(f'{ctx.doc_path}/{self._v1_draft}', doc)
-        logger.info(f'[ModuleMetric] merge modules: {len(drafts)} -> {len(docs)}')
+        logger.info(f'[ModuleV2Metric] merge modules: {len(drafts)} -> {len(docs)}')

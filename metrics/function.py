@@ -15,6 +15,8 @@ documentation_guideline = (
 
 
 class FunctionMetric(Metric):
+
+
     def eva(self, ctx):
         functions = ctx.function_map
         callgraph = ctx.callgraph

@@ -30,7 +30,6 @@ class Symbol:
     def __hash__(self):
         return hash(self.base)
 
-
 @dataclass
 class FieldDef:
     name: str
@@ -96,10 +95,13 @@ class EvaContext:
     doc_path: str
     resource_path: str
     output_path: str
+
     clazz_map: Dict[Symbol, ClazzDef] = None
     function_map: Dict[Symbol, FuncDef] = None
+
     callgraph: nx.DiGraph = None
     clazz_callgraph: nx.DiGraph = None
+
     structure: str = None
 
     @staticmethod

@@ -121,11 +121,14 @@ class RepoV2Metric(Metric):
     def eva(self, ctx):
         existed_repo_doc = ctx.load_repo_doc()
         if existed_repo_doc:
-            logger.info(f'[RepoRAGMetric] load repo')
+            logger.info(f'[RepoV2Metric] load repo')
             return
         # 使用模块文档组织上下文
         modules = ctx.load_module_docs()
-        logger.info(f'[RepoRAGMetric] gen doc for repo, modules count: {len(modules)}')
+        logger.info(f'[RepoV2Metric] gen doc for repo, modules count: {len(modules)}')
+        if len(modules) == 0:
+            logger.warning(f'[RepoV2Metric] no module found, cannot generate repo doc')
+            return
         modules_doc = '\n\n---\n\n'.join(map(lambda m: m.markdown(), modules))
         prompt = repo_summarize_prompt.format(modules_doc=prefix_with(modules_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
@@ -134,14 +137,14 @@ class RepoV2Metric(Metric):
         if ProjectSettings().is_debug():
             with open(f'{ctx.doc_path}/repo-0.md', 'w') as f:
                 f.write(doc.markdown())
-        logger.info(f'[RepoRAGMetric] gen doc for repo, doc inited')
+        logger.info(f'[RepoV2Metric] gen doc for repo, doc inited')
         prompt2 = questions_prompt.format(repo_doc=doc.markdown())
         questions_doc = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
         # 保存仓库文档QA
         if ProjectSettings().is_debug():
             with open(f'{ctx.doc_path}/repo-1.md', 'w') as f:
                 f.write(questions_doc)
-        logger.info(f'[RepoRAGMetric] gen doc for repo, questions inited')
+        logger.info(f'[RepoV2Metric] gen doc for repo, questions inited')
         question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
 
         questions = list(
@@ -162,7 +165,7 @@ class RepoV2Metric(Metric):
                                         question=q)
             answer = SimpleLLM(ChatCompletionSettings()).add_user_msg(q_prompt).ask()
             questions_with_answer.append(f'- {q}\n > **Answer**: {answer}')
-            logger.info(f'[RepoRAGMetric] answer question {i + 1}')
+            logger.info(f'[RepoV2Metric] answer question {i + 1}')
         qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
         if ProjectSettings().is_debug():
@@ -172,4 +175,4 @@ class RepoV2Metric(Metric):
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt3).ask()
         doc = RepoDoc.from_chapter(res)
         ctx.save_repo_doc(doc)
-        logger.info(f'[RepoRAGMetric] gen doc for repo, doc saved')
+        logger.info(f'[RepoV2Metric] gen doc for repo, doc saved')

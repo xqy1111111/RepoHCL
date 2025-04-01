@@ -5,7 +5,6 @@ import threading
 import time
 from typing import Any, Callable, Dict, List
 
-from colorama import Fore, Style
 
 
 class Task:
@@ -78,9 +77,6 @@ class TaskManager:
                 ) and self.task_dict[task_id].status == 0
                 if ready:
                     self.task_dict[task_id].status = 1
-                    print(
-                        f"{Fore.RED}[process {process_id}]{Style.RESET_ALL}: get task({task_id}), remain({len(self.task_dict)})"
-                    )
                     return self.task_dict[task_id], task_id
             return None, -1
 

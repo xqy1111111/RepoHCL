@@ -263,13 +263,18 @@ class ClangParser(Metric):
             raise Exception('Makefile not found in root')
         # 基于makefile生成compile_commands.json
         cmd('bear make -j`nproc`')
+        # 生成 build ast 命令
         gen_sh(resource_path)
+        # 生成.ast
         cmd('chmod +x buildast.sh')
         cmd('./buildast.sh')
-        cmd(f'lib/cge {resource_path}/astList.txt', path='.')
+        # 在resource_path目录下解析ast
+        shutil.copy('lib/cge', resource_path)
+        cmd(f'./cge astList.txt')
+        # 将解析结果移动到output_path
         os.makedirs(output_path, exist_ok=True)
-        shutil.move('structs.json', output_path)
-        shutil.move('typedefs.json', output_path)
-        shutil.move('functions.json', output_path)
-        shutil.move('records.json', output_path)
-        shutil.move('cg.dot', output_path)
+        shutil.move(f'{resource_path}/structs.json', output_path)
+        shutil.move(f'{resource_path}/typedefs.json', output_path)
+        shutil.move(f'{resource_path}/functions.json', output_path)
+        shutil.move(f'{resource_path}/records.json', output_path)
+        shutil.move(f'{resource_path}/cg.dot', output_path)

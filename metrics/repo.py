@@ -125,6 +125,9 @@ class RepoMetric(Metric):
         # 使用模块文档组织上下文
         modules = ctx.load_module_docs()
         logger.info(f'[RepoMetric] gen doc for repo, modules count: {len(modules)}')
+        if len(modules) == 0:
+            logger.warning(f'[RepoMetric] no module found, cannot generate repo doc')
+            return
         modules_doc = '\n\n---\n\n'.join(map(lambda m: m.markdown(), modules))
         prompt = repo_summarize_prompt.format(modules_doc=prefix_with(modules_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()

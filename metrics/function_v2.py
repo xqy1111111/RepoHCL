@@ -26,12 +26,12 @@ class FunctionV2Metric(Metric):
         callgraph = ctx.callgraph
         # 逆拓扑排序callgraph
         sorted_functions = list(reversed(list(nx.topological_sort(callgraph))))
-        logger.info(f'[FunctionMetric] gen doc for functions, functions count: {len(sorted_functions)}')
+        logger.info(f'[FunctionV2Metric] gen doc for functions, functions count: {len(sorted_functions)}')
         # 生成文档
         for i in range(len(sorted_functions)):
             symbol = Symbol(base=sorted_functions[i])
             if ctx.load_function_doc(symbol):
-                logger.info(f'[FunctionMetric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
+                logger.info(f'[FunctionV2Metric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
                 continue
             f: FuncDef = functions.get(symbol)
             referenced = list(
@@ -45,7 +45,7 @@ class FunctionV2Metric(Metric):
             doc = ApiDoc.from_chapter(res)
             doc.code = f'```C++\n{f.code}\n```'
             ctx.save_function_doc(symbol, doc)
-            logger.info(f'[FunctionMetric] parse {symbol.base}: {i + 1}/{len(sorted_functions)}')
+            logger.info(f'[FunctionV2Metric] parse {symbol.base}: {i + 1}/{len(sorted_functions)}')
 
     @staticmethod
     def _revise(ctx):
@@ -53,12 +53,12 @@ class FunctionV2Metric(Metric):
         callgraph = ctx.callgraph
         # 逆拓扑排序callgraph
         sorted_functions = list(nx.topological_sort(callgraph))
-        logger.info(f'[FunctionMetric] revise doc for functions, functions count: {len(sorted_functions)}')
+        logger.info(f'[FunctionV2Metric] revise doc for functions, functions count: {len(sorted_functions)}')
         # 生成文档
         for i in range(len(sorted_functions)):
             symbol = Symbol(base=sorted_functions[i])
             # if ctx.load_function_doc(symbol):
-            #     logger.info(f'[FunctionMetric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
+            #     logger.info(f'[FunctionV2Metric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
             #     continue
             f: FuncDef = functions.get(symbol)
             referencer: List[ApiDoc] = list(filter(lambda s: s is not None,
@@ -76,7 +76,7 @@ class FunctionV2Metric(Metric):
             doc.name = symbol.base
             doc.code = f'```C++\n{f.code}\n```'
             ctx.save_doc(f'{ctx.doc_path}/{f.filename}-1.{ApiDoc.doc_type()}.md', doc)
-            logger.info(f'[FunctionMetric] revise {symbol.base}: {i + 1}/{len(sorted_functions)}')
+            logger.info(f'[FunctionV2Metric] revise {symbol.base}: {i + 1}/{len(sorted_functions)}')
 
 
 doc_generation_instruction = '''

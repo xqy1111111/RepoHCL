@@ -94,6 +94,9 @@ class ModuleMetric(Metric):
                                                    and ctx.function_map.get(x).declFile.endswith('.h'),
                                          ctx.function_map.keys()))
         logger.info(f'[ModuleMetric] gen drafts for modules, apis count: {len(apis)}')
+        if len(apis) == 0:
+            logger.warning(f'[ModuleMetric] no apis found, cannot generate modules docs')
+            return
         # 使用函数描述组织上下文
         api_docs = reduce(lambda x, y: x + y,
                           map(lambda a: f'- {a.base}\n > {ctx.load_function_doc(a).description}\n\n', apis))
@@ -131,5 +134,6 @@ class ModuleMetric(Metric):
             logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(drafts)}: {m.name}')
 
     def eva(self, ctx):
+
         self._draft(ctx)
         self._enhance(ctx)

@@ -5,7 +5,7 @@ from typing import Callable
 from loguru import logger
 from openai import OpenAI, Stream
 from openai.types.chat import ChatCompletionChunk
-from requests import ReadTimeout
+from httpx import ReadTimeout
 
 from .settings import ProjectSettings, ChatCompletionSettings
 

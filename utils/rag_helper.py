@@ -6,7 +6,6 @@ import faiss
 import numpy as np
 import torch
 from loguru import logger
-from transformers import AutoTokenizer, AutoModel
 
 from utils.settings import RagSettings
 
