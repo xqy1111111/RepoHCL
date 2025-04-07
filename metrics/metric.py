@@ -53,6 +53,14 @@ class FuncDef:
     declFile: str = ''
     # return_type: FieldDef
 
+    def __hash__(self):
+        return hash(self.symbol.base)
+
+    def __eq__(self, other):
+        if not isinstance(other, FuncDef):
+            return False
+        return self.symbol == other.symbol
+
 
 @dataclass
 class ClazzDef:
@@ -86,6 +94,13 @@ class ClazzDef:
         code += '};'
         return code
 
+    def __hash__(self):
+        return hash(self.symbol.base)
+
+    def __eq__(self, other):
+        if not isinstance(other, ClazzDef):
+            return False
+        return self.symbol == other.symbol
 
 T = TypeVar('T', bound=Doc)
 

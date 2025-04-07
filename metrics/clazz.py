@@ -1,27 +1,25 @@
 from typing import List
 
-import networkx as nx
 from loguru import logger
 
-from .metric import Metric, FieldDef, ClazzDef, Symbol
-from .function import documentation_guideline
+from utils import SimpleLLM, ChatCompletionSettings, prefix_with, TaskDispatcher, llm_thread_pool
 from .doc import ApiDoc, ClazzDoc
-from utils import SimpleLLM, ChatCompletionSettings, prefix_with
+from .function import documentation_guideline
+from .metric import Metric, FieldDef, ClazzDef, Symbol
 
 
 class ClazzMetric(Metric):
     def eva(self, ctx):
         clazz = ctx.clazz_map
         callgraph = ctx.clazz_callgraph
-        sorted_clazz = list(reversed(list(nx.topological_sort(callgraph))))
-        # 逆拓扑排序callgraph
         logger.info(f'[ClazzMetric] gen doc for class, class count: {len(ctx.clazz_map)}')
+
         # 生成文档
-        for i in range(len(sorted_clazz)):
-            symbol = Symbol(base=sorted_clazz[i])
+        def gen(cname: str):
+            symbol = Symbol(base=cname)
             if ctx.load_clazz_doc(symbol):
-                logger.info(f'[ClazzMetric] load {symbol.base}: {i + 1}/{len(sorted_clazz)}')
-                continue
+                logger.info(f'[ClazzMetric] load {symbol.base}')
+                return
             c: ClazzDef = clazz.get(symbol)
             referenced = list(
                 filter(lambda s: s is not None,
@@ -38,7 +36,9 @@ class ClazzMetric(Metric):
             res = f'### {symbol.base}\n' + res
             doc = ClazzDoc.from_chapter(res)
             ctx.save_clazz_doc(symbol, doc)
-            logger.info(f'[ClazzMetric] parse {symbol.base}: {i + 1}/{len(sorted_clazz)}')
+            logger.info(f'[ClazzMetric] parse {symbol.base}')
+
+        TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
 
 
 doc_generation_instruction = (

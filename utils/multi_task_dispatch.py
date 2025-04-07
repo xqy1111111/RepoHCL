@@ -1,142 +1,143 @@
 from __future__ import annotations
 
-import random
-import threading
-import time
-from typing import Any, Callable, Dict, List
+import sys
+import uuid
+from collections import deque, defaultdict
+from concurrent.futures import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
+from typing import List, TypeVar, Any
 
+import networkx as nx
+from loguru import logger
+from typing_extensions import Callable, Optional
+
+P = TypeVar("P")
 
 
 class Task:
-    def __init__(self, task_id: int, dependencies: List[Task], extra_info: Any = None):
-        self.task_id = task_id
-        self.extra_info = extra_info
+    def __init__(self, f: Callable[[P]], args: P, dependencies: Optional[List[Task]] = None):
+        self.f = f
         self.dependencies = dependencies
-        self.status = 0  # 任务状态：0未开始，1正在进行，2已经完成，3出错了
+        self.args = args
+        self.id = uuid.uuid4().hex
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        if not isinstance(other, Task):
+            return False
+        return self.id == other.id
 
 
-class TaskManager:
-    def __init__(self):
-        """
-        Initialize a MultiTaskDispatch object.
+class TaskDispatcher:
+    def __init__(self, pool: ThreadPoolExecutor):
+        self._pool = pool
+        self._tasks = nx.DiGraph()
 
-        This method initializes the MultiTaskDispatch object by setting up the necessary attributes.
+    def adds(self, tasks: List[Task]):
+        for task in tasks:
+            self.add(task)
+        return self
 
-        Attributes:
-        - task_dict (Dict[int, Task]): A dictionary that maps task IDs to Task objects.
-        - task_lock (threading.Lock): A lock used for thread synchronization when accessing the task_dict.
-        - now_id (int): The current task ID.
-        - query_id (int): The current query ID.
-        - sync_func (None): A placeholder for a synchronization function.
-
-        """
-        self.task_dict: Dict[int, Task] = {}
-        self.task_lock = threading.Lock()
-        self.now_id = 0
-        self.query_id = 0
-
-    @property
-    def all_success(self) -> bool:
-        return len(self.task_dict) == 0
-
-    def add_task(self, dependency_task_id: List[int], extra=None) -> int:
-        """
-        Adds a new task to the task dictionary.
-
-        Args:
-            dependency_task_id (List[int]): List of task IDs that the new task depends on.
-            extra (Any, optional): Extra information associated with the task. Defaults to None.
-
-        Returns:
-            int: The ID of the newly added task.
-        """
-        with self.task_lock:
-            depend_tasks = [self.task_dict[task_id] for task_id in dependency_task_id]
-            self.task_dict[self.now_id] = Task(
-                task_id=self.now_id, dependencies=depend_tasks, extra_info=extra
-            )
-            self.now_id += 1
-            return self.now_id - 1
-
-    def get_next_task(self, process_id: int):
-        """
-        Get the next task for a given process ID.
-
-        Args:
-            process_id (int): The ID of the process.
-
-        Returns:
-            tuple: A tuple containing the next task object and its ID.
-                   If there are no available tasks, returns (None, -1).
-        """
-        with self.task_lock:
-            self.query_id += 1
-            for task_id in self.task_dict.keys():
-                ready = (
-                    len(self.task_dict[task_id].dependencies) == 0
-                ) and self.task_dict[task_id].status == 0
-                if ready:
-                    self.task_dict[task_id].status = 1
-                    return self.task_dict[task_id], task_id
-            return None, -1
-
-    def mark_completed(self, task_id: int):
-        """
-        Marks a task as completed and removes it from the task dictionary.
-
-        Args:
-            task_id (int): The ID of the task to mark as completed.
-
-        """
-        with self.task_lock:
-            target_task = self.task_dict[task_id]
-            for task in self.task_dict.values():
-                if target_task in task.dependencies:
-                    task.dependencies.remove(target_task)
-            self.task_dict.pop(task_id)  # 从任务字典中移除
-
-
-def worker(task_manager, process_id: int, handler: Callable):
-    """
-    Worker function that performs tasks assigned by the task manager.
-
-    Args:
-        task_manager: The task manager object that assigns tasks to workers.
-        process_id (int): The ID of the current worker process.
-        handler (Callable): The function that handles the tasks.
-
-    Returns:
-        None
-    """
-    while True:
-        if task_manager.all_success:
+    def add(self, f: Task):
+        self._tasks.add_node(f)
+        if f.dependencies is None:
             return
-        task, task_id = task_manager.get_next_task(process_id)
-        if task is None:
-            time.sleep(0.5)
-            continue
-        # print(f"will perform task: {task_id}")
-        handler(task.extra_info)
-        task_manager.mark_completed(task.task_id)
-        # print(f"task complete: {task_id}")
+        for dep in f.dependencies:
+            self._tasks.add_edge(f, dep)
+        return self
+
+    def map(self, dg: nx.DiGraph, f: Callable):
+        tasks = {}
+        for node in dg.nodes:
+            tasks[node] = Task(f=f, args=(node,))
+        for node in dg.nodes:
+            tasks[node].dependencies = []
+            for dep in dg.successors(node):
+                tasks[node].dependencies.append(tasks[dep])
+            self.add(tasks[node])
+        return self
+
+    def run(self):
+        # 检查是否有环
+        if not nx.is_directed_acyclic_graph(self._tasks):
+            raise ValueError("Graph is not acyclic")
+
+        groups = reverse_topo(self._tasks)
+        for g in groups:
+            futures = {self._pool.submit(task.f, *task.args): task for task in g}
+            for future in as_completed(futures):
+                task = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Task {task.id} failed with exception: {e}")
 
 
-if __name__ == "__main__":
-    task_manager = TaskManager()
+def reverse_topo(G: nx.DiGraph) -> List[List[Any]]:
+    # 初始化所有节点的出度为分数
+    out_degree = {node: G.out_degree(node) for node in G.nodes()}
+    scores = {node: -1 for node in G.nodes()}  # -1表示未评分
 
-    def some_function():  # 随机睡一会
-        time.sleep(random.random() * 3)
+    # 将所有出度为0且尚未评分的节点加入队列
+    queue = deque([node for node, degree in out_degree.items() if degree == 0])
 
-    # 添加任务，例如：
-    i1 = task_manager.add_task(some_function, [])  # type: ignore
-    i2 = task_manager.add_task(some_function, [])  # type: ignore
-    i3 = task_manager.add_task(some_function, [i1])  # type: ignore
-    i4 = task_manager.add_task(some_function, [i2, i3])  # type: ignore
-    i5 = task_manager.add_task(some_function, [i2, i3])  # type: ignore
-    i6 = task_manager.add_task(some_function, [i1])  # type: ignore
+    current_score = 0
+    while queue:
+        # 处理当前层的所有节点
+        for _ in range(len(queue)):
+            node = queue.popleft()
+            if scores[node] == -1:  # 确保只评一次分
+                scores[node] = current_score
 
-    threads = [threading.Thread(target=worker, args=(task_manager,)) for _ in range(4)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+                # 对于每个邻居，减少其入度；如果入度变为0，则加入队列
+                for neighbor in G.predecessors(node):
+                    out_degree[neighbor] -= 1
+                    if out_degree[neighbor] == 0:
+                        queue.append(neighbor)
+
+        # 进入下一层
+        current_score += 1
+
+    # 根据得分对节点进行分组
+    groups = defaultdict(list)
+    for node, score in scores.items():
+        groups[score].append(node)
+
+    return list(map(lambda x: x[1], sorted(groups.items(), key=lambda x: x[0])))
+
+
+if __name__ == '__main__':
+    import time
+
+    def task(n):
+        print(f"Task {n} started")
+        time.sleep(1)
+        print(f"Task {n} finished")
+
+
+    pool = ThreadPoolExecutor(max_workers=4)
+    dispatcher = TaskDispatcher(pool)
+
+    task1 = Task(f=task, args=1)
+    task2 = Task(f=task, args=2, dependencies=[task1])
+    task3 = Task(f=task, args=3, dependencies=[task1])
+    task4 = Task(f=task, args=4, dependencies=[task2, task3])
+
+    # 添加任务
+    dispatcher.add(task1)
+    dispatcher.add(task2)
+    dispatcher.add(task3)
+    dispatcher.add(task4)
+
+    # 执行任务
+    dispatcher.run()
+
+    dispatcher2 = TaskDispatcher(pool)
+
+    graph = nx.DiGraph()
+    graph.add_edges_from([(1, 2), (1, 3), (2, 4), (3, 4)])
+
+    dispatcher2.map(graph, task)
+    dispatcher2.run()

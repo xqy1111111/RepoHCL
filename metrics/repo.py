@@ -2,8 +2,8 @@ import re
 
 from loguru import logger
 
-from utils import SimpleLLM, prefix_with, ChatCompletionSettings, ToolsLLM
-from utils.settings import ProjectSettings
+from utils import SimpleLLM, prefix_with, ChatCompletionSettings, ToolsLLM, TaskDispatcher, Task
+from utils.settings import ProjectSettings, llm_thread_pool
 from .doc import RepoDoc
 from .metric import Metric, Symbol
 
@@ -114,8 +114,6 @@ Please Note:
 '''
 
 
-
-
 class RepoMetric(Metric):
     def eva(self, ctx):
         existed_repo_doc = ctx.load_repo_doc()
@@ -177,11 +175,15 @@ class RepoMetric(Metric):
                    .add_system_msg(qa_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '),
                                                     modules_doc=prefix_with(modules_doc, '> '))))
         questions_with_answer = []
-        for i in range(len(questions)):
-            q_prompt = questions[i]
-            answer = toolLLM.add_user_msg(q_prompt).ask()
-            questions_with_answer.append(f'- {q_prompt}\n > **Answer**: {answer}')
+
+        def answer_qa(i: int, q: str):
+            answer = toolLLM.add_user_msg(q).ask()
+            questions_with_answer.append(f'- {q}\n > **Answer**: {answer}')
             logger.info(f'[RepoMetric] answer question {i + 1}')
+
+        TaskDispatcher(llm_thread_pool).adds(
+            list(map(lambda args: Task(f=answer_qa, args=args), enumerate(questions)))).run()
+
         qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
         if ProjectSettings().is_debug():

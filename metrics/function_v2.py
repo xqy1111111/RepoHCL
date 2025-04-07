@@ -4,7 +4,7 @@ from typing import List
 import networkx as nx
 from loguru import logger
 
-from utils import SimpleLLM, ChatCompletionSettings, prefix_with
+from utils import SimpleLLM, ChatCompletionSettings, prefix_with, TaskDispatcher, llm_thread_pool
 from .doc import ApiDoc
 from .metric import Metric, FieldDef, FuncDef, Symbol
 
@@ -16,24 +16,25 @@ documentation_guideline = (
 
 
 class FunctionV2Metric(Metric):
+    _v2_draft: str = 'v2-draft.md'
+
     def eva(self, ctx):
         self._draft(ctx)
-        # self._revise(ctx)
+        self._revise(ctx)
 
-    @staticmethod
-    def _draft(ctx):
+    def _draft(self, ctx):
         functions = ctx.function_map
         callgraph = ctx.callgraph
         # 逆拓扑排序callgraph
-        sorted_functions = list(reversed(list(nx.topological_sort(callgraph))))
-        logger.info(f'[FunctionV2Metric] gen doc for functions, functions count: {len(sorted_functions)}')
+        logger.info(f'[FunctionV2Metric] gen doc for functions, functions count: {len(callgraph)}')
+
         # 生成文档
-        for i in range(len(sorted_functions)):
-            symbol = Symbol(base=sorted_functions[i])
-            if ctx.load_function_doc(symbol):
-                logger.info(f'[FunctionV2Metric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
-                continue
+        def gen(fname: str):
+            symbol = Symbol(base=fname)
             f: FuncDef = functions.get(symbol)
+            if ctx.load_doc(symbol, f'{ctx.doc_path}/{f.filename}.{ApiDoc.doc_type()}.{self._v2_draft}.md', ApiDoc):
+                logger.info(f'[FunctionV2Metric] load {symbol.base}')
+                return
             referenced = list(
                 filter(lambda s: s is not None,
                        map(lambda s: ctx.load_function_doc(Symbol(base=s)), callgraph.successors(symbol.base)))
@@ -44,39 +45,43 @@ class FunctionV2Metric(Metric):
             res = f'### {symbol.base}\n' + res
             doc = ApiDoc.from_chapter(res)
             doc.code = f'```C++\n{f.code}\n```'
-            ctx.save_function_doc(symbol, doc)
-            logger.info(f'[FunctionV2Metric] parse {symbol.base}: {i + 1}/{len(sorted_functions)}')
+            ctx.save_doc(f'{ctx.doc_path}/{f.filename}.{ApiDoc.doc_type()}.{self._v2_draft}.md', doc)
+            logger.info(f'[FunctionV2Metric] parse {symbol.base}')
 
-    @staticmethod
-    def _revise(ctx):
+        TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
+
+    def _revise(self, ctx):
         functions = ctx.function_map
         callgraph = ctx.callgraph
-        # 逆拓扑排序callgraph
-        sorted_functions = list(nx.topological_sort(callgraph))
-        logger.info(f'[FunctionV2Metric] revise doc for functions, functions count: {len(sorted_functions)}')
+        logger.info(f'[FunctionV2Metric] revise doc for functions, functions count: {len(callgraph)}')
+
         # 生成文档
-        for i in range(len(sorted_functions)):
-            symbol = Symbol(base=sorted_functions[i])
-            # if ctx.load_function_doc(symbol):
-            #     logger.info(f'[FunctionV2Metric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
-            #     continue
+        def gen(fname: str):
+            symbol = Symbol(base=fname)
+            if ctx.load_function_doc(symbol):
+                logger.info(f'[FunctionV2Metric] load {symbol.base}')
+                return
             f: FuncDef = functions.get(symbol)
             referencer: List[ApiDoc] = list(filter(lambda s: s is not None,
                                                    map(lambda s: ctx.load_function_doc(Symbol(base=s)),
                                                        callgraph.predecessors(symbol.base))))
+            draft_doc = ctx.load_doc(symbol, f'{ctx.doc_path}/{f.filename}.{ApiDoc.doc_type()}.{self._v2_draft}.md', ApiDoc)
             if len(referencer) == 0:
-                ctx.save_doc(f'{ctx.doc_path}/{f.filename}-1.{ApiDoc.doc_type()}.md', ctx.load_function_doc(symbol))
-                continue
-            prompt = doc_revised_prompt.format(referencer=reduce(lambda x, y: x + y, map(lambda
-                                                                                             r: f'**Function**: `{r.name}`\n\n' + '**Document**:\n\n' + prefix_with(
-                r.markdown(), '> ') + '\n---\n', referencer)),
-                                               function_doc=prefix_with(ctx.load_function_doc(symbol).markdown(), '> '))
+                ctx.save_function_doc(symbol, draft_doc)
+                return
+            prompt = doc_revised_prompt.format(referencer=reduce(
+                lambda x, y: x + y,
+                map(lambda r: f'**Function**: `{r.name}`\n\n**Document**:\n\n{prefix_with(r.markdown(), "> ")}\n---\n',
+                    referencer)),
+                function_doc=prefix_with(draft_doc.markdown(), '> '))
             res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
             doc: ApiDoc = ApiDoc.from_chapter(res)
             doc.name = symbol.base
             doc.code = f'```C++\n{f.code}\n```'
-            ctx.save_doc(f'{ctx.doc_path}/{f.filename}-1.{ApiDoc.doc_type()}.md', doc)
-            logger.info(f'[FunctionV2Metric] revise {symbol.base}: {i + 1}/{len(sorted_functions)}')
+            ctx.save_function_doc(symbol, doc)
+            logger.info(f'[FunctionV2Metric] revise {symbol.base}')
+
+        TaskDispatcher(llm_thread_pool).map(nx.reverse(callgraph), gen).run()
 
 
 doc_generation_instruction = '''

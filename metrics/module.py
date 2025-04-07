@@ -3,7 +3,7 @@ from typing import List
 
 from loguru import logger
 
-from utils import SimpleLLM, prefix_with, ChatCompletionSettings
+from utils import SimpleLLM, prefix_with, ChatCompletionSettings, TaskDispatcher, llm_thread_pool, Task
 from .doc import ModuleDoc
 from .metric import Metric, Symbol
 
@@ -116,8 +116,9 @@ class ModuleMetric(Metric):
             logger.info(f'[ModuleMetric] load docs, modules count: {len(existed_modules_doc)}')
             return
         drafts = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
+
         # 优化模块文档
-        for i, m in enumerate(drafts):
+        def gen(i: int, m: ModuleDoc):
             # 使用完整函数文档组织上下文
             functions_doc = []
             for f in m.functions:
@@ -133,7 +134,9 @@ class ModuleMetric(Metric):
             ctx.save_module_doc(doc)
             logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(drafts)}: {m.name}')
 
-    def eva(self, ctx):
+        TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=args), enumerate(drafts)))).run()
 
+
+    def eva(self, ctx):
         self._draft(ctx)
         self._enhance(ctx)

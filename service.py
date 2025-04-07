@@ -203,10 +203,12 @@ Please Note:
         p = self._prompt.format(software=prefix_with(s, '> '))
         llm = SimpleLLM(ChatCompletionSettings())
         res = llm.add_user_msg(p).ask()
+        with open('compare.md', 'w') as f:
+            f.write(res)
         return res
 
 
-@app.get('/tools/comp')
+@app.post('/tools/comp')
 async def comp(req: CompReq, background_tasks: BackgroundTasks) -> CompResult:
     background_tasks.add_task(do_comp, req=req)
     return CompResult(requestId=req.requestId, status=RAStatus.received.value, message='task received')
@@ -219,4 +221,4 @@ def do_comp(req: CompReq):
     except Exception as e:
         logger.error(f'fail to compare doc for {req.requestId}, err={e}')
         requests_with_retry(req.callback, content=CompResult(requestId=req.requestId, result=None, message=str(e),
-                                                             status=RAStatus.fail.value))
+                                                             status=RAStatus.fail.value).model_dump_json())

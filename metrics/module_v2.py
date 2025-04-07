@@ -3,7 +3,8 @@ from typing import List
 
 from loguru import logger
 
-from utils import SimpleLLM, prefix_with, ChatCompletionSettings, SimpleRAG, RagSettings
+from utils import SimpleLLM, prefix_with, ChatCompletionSettings, SimpleRAG, RagSettings, TaskDispatcher, \
+    llm_thread_pool, Task
 from . import ModuleMetric
 from .doc import ModuleDoc
 from .metric import Symbol, EvaContext
@@ -68,6 +69,7 @@ Please Note:
 
 '''
 
+
 # V2本质上是先分解再合并，分解时使用聚类算法，合并时使用大模型。V2的效果并不比V1更好，但减少了上下文量。当具备1000个API时，V1的上下文量达到64+K。V2的上下文量则在10K以内。
 class ModuleV2Metric(ModuleMetric):
     _v2_draft: str = 'modules-v2-draft.md'
@@ -98,8 +100,8 @@ class ModuleV2Metric(ModuleMetric):
         cluster = rag.kmeans(
             list(map(lambda x: x.name + ': ' + x.description, map(lambda x: ctx.load_function_doc(x), apis))))
         logger.info(f'[ModuleV2Metric] cluster to {len(cluster)} groups')
-        i = 1
-        for g in cluster:
+
+        def gen(g: List[int]):
             # 使用函数描述组织上下文
             api_docs = reduce(lambda x, y: x + y,
                               map(lambda x: f'- {apis[x].base}\n > {ctx.load_function_doc(apis[x]).description}\n\n',
@@ -111,8 +113,9 @@ class ModuleV2Metric(ModuleMetric):
             # 保存模块文档
             for doc in docs:
                 ctx.save_doc(f'{ctx.doc_path}/{self._v2_draft}', doc)
-                logger.info(f'[ModuleV2Metric] gen draft for module {i}: {doc.name}')
-                i += 1
+                logger.info(f'[ModuleV2Metric] gen draft for module {doc.name}')
+
+        TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=(args,)), cluster))).run()
 
     def _merge(self, ctx: EvaContext):
         existed_modules_doc = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)

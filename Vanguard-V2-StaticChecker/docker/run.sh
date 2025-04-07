@@ -6,8 +6,8 @@
 docker container prune -f
 docker image prune -f
 
-docker build -f docker/dockerfile.cg -t cg .
-docker build -f docker/dockerfile.cg_"$1" -t cg_"$1" --network=host .
+docker build -f docker/base.dockerfile -t cg .
+docker build -f docker/"$1".dockerfile -t cg_"$1" --network=host .
 
 docker run -td cg_"$1" bash
 

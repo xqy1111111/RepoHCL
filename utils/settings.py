@@ -1,3 +1,4 @@
+from concurrent.futures.thread import ThreadPoolExecutor
 from dataclasses import field, dataclass
 from enum import Enum
 from typing import Any
@@ -29,6 +30,7 @@ class LogLevel(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+
 @dataclass
 class ProjectSettings:
     log_level: LogLevel = field(default_factory=lambda: config('LOG_LEVEL', cast=LogLevel, default=LogLevel.INFO))
@@ -36,6 +38,8 @@ class ProjectSettings:
     def is_debug(self):
         return self.log_level == LogLevel.DEBUG
 
+
+llm_thread_pool = ThreadPoolExecutor(1) if ProjectSettings().is_debug() else ThreadPoolExecutor(16)
 
 @dataclass
 class ChatCompletionSettings:
@@ -54,3 +58,4 @@ class RagSettings:
     tokenizer: Any = field(default_factory=lambda: config('TOKENIZER', default='Amu/tao-8k', cast= lambda x: AutoTokenizer.from_pretrained(x)))
     model: Any = field(default_factory=lambda: config('TOKENIZER_MODEL', default='Amu/tao-8k', cast=lambda x: AutoModel.from_pretrained(x)))
     dim: int = field(default_factory=lambda: config('TOKENIZER_DIM', cast=int, default=1024))
+

@@ -1,11 +1,11 @@
 from typing import List
 
-import networkx as nx
 from loguru import logger
 
-from .metric import Metric, FieldDef, FuncDef, Symbol
+from utils import SimpleLLM, ChatCompletionSettings, prefix_with, TaskDispatcher
+from utils.settings import llm_thread_pool
 from .doc import ApiDoc
-from utils import SimpleLLM, ChatCompletionSettings, prefix_with
+from .metric import Metric, FieldDef, FuncDef, Symbol
 
 documentation_guideline = (
     "Keep in mind that your audience is document readers, so use a deterministic tone to generate precise content and don't let them know "
@@ -16,19 +16,17 @@ documentation_guideline = (
 
 class FunctionMetric(Metric):
 
-
     def eva(self, ctx):
         functions = ctx.function_map
         callgraph = ctx.callgraph
-        # 逆拓扑排序callgraph
-        sorted_functions = list(reversed(list(nx.topological_sort(callgraph))))
-        logger.info(f'[FunctionMetric] gen doc for functions, functions count: {len(sorted_functions)}')
-        # 生成文档
-        for i in range(len(sorted_functions)):
-            symbol = Symbol(base=sorted_functions[i])
+        logger.info(f'[FunctionMetric] gen doc for functions, functions count: {len(callgraph)}')
+
+        # 生成文档:
+        def gen(fname: str):
+            symbol = Symbol(base=fname)
             if ctx.load_function_doc(symbol):
-                logger.info(f'[FunctionMetric] load {symbol.base}: {i + 1}/{len(sorted_functions)}')
-                continue
+                logger.info(f'[FunctionMetric] load {symbol.base}')
+                return
             f: FuncDef = functions.get(symbol)
             referencer = list(
                 filter(lambda s: s is not None,
@@ -44,7 +42,9 @@ class FunctionMetric(Metric):
             res = f'### {symbol.base}\n' + res
             doc = ApiDoc.from_chapter(res)
             ctx.save_function_doc(symbol, doc)
-            logger.info(f'[FunctionMetric] parse {symbol.base}: {i + 1}/{len(sorted_functions)}')
+            logger.info(f'[FunctionMetric] parse {symbol.base}')
+
+        TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
 
 
 doc_generation_instruction = '''

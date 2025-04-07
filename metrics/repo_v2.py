@@ -3,8 +3,8 @@ from typing import List
 
 from loguru import logger
 
-from utils import SimpleLLM, prefix_with, ChatCompletionSettings, SimpleRAG, RagSettings
-from utils.settings import ProjectSettings
+from utils import SimpleLLM, prefix_with, ChatCompletionSettings, SimpleRAG, RagSettings, TaskDispatcher, Task
+from utils.settings import ProjectSettings, llm_thread_pool
 from .doc import RepoDoc, ApiDoc
 from .metric import Metric
 
@@ -155,8 +155,8 @@ class RepoV2Metric(Metric):
         functions: List[ApiDoc] = list(map(lambda x: ctx.load_function_doc(x), ctx.function_map.keys()))
         rag.add(list(map(lambda x: x.detail, functions)))
         questions_with_answer = []
-        for i in range(len(questions)):
-            q = questions[i]
+
+        def answer_qa(i: int, q: str):
             I = rag.query(q)
             functions_doc = [functions[i].markdown() for i in I]
             functions_doc = '\n\n---\n\n'.join(functions_doc)
@@ -166,6 +166,10 @@ class RepoV2Metric(Metric):
             answer = SimpleLLM(ChatCompletionSettings()).add_user_msg(q_prompt).ask()
             questions_with_answer.append(f'- {q}\n > **Answer**: {answer}')
             logger.info(f'[RepoV2Metric] answer question {i + 1}')
+
+        TaskDispatcher(llm_thread_pool).adds(
+            list(map(lambda args: Task(f=answer_qa, args=args), enumerate(questions)))).run()
+
         qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
         if ProjectSettings().is_debug():
