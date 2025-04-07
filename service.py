@@ -1,3 +1,4 @@
+import os.path
 import time
 import uuid
 from enum import Enum
@@ -50,7 +51,7 @@ def fetch_repo(repo: str) -> str:
         raise Exception(response.text)
     logger.info(f'fetch repo {response.status_code} {len(response.content)}')
     archive = resolve_archive(response.content)
-    archive.decompress(f'resource/{save_path}')
+    archive.decompress(os.path.join('resource', save_path))
     return save_path
 
 
@@ -98,7 +99,8 @@ def requests_with_retry(url: str, content: str, retry: int = 5):
 
 def run_with_response(path: str, req: RATask):
     try:
-        ctx = EvaContext(doc_path=f'docs/{path}', resource_path=f'resource/{path}', output_path=f'output/{path}')
+        ctx = EvaContext(doc_path=os.path.join('docs', path), resource_path=os.path.join('resource', path),
+                         output_path=os.path.join('output', path))
         eva(ctx)
         data = EvaResult(functions=list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.function_map.keys())),
                          classes=list(map(lambda x: ctx.load_clazz_doc(x).model_dump(), ctx.clazz_map.keys())),
@@ -197,7 +199,7 @@ Please Note:
     def eva(self, results: List[EvaResult]) -> str:
         s = ''
         for i, r in enumerate(results):
-            s += f'## Software {i+1}\n'
+            s += f'## Software {i + 1}\n'
             s += self._sprompt(r)
             s += '---'
         p = self._prompt.format(software=prefix_with(s, '> '))
@@ -212,6 +214,7 @@ Please Note:
 async def comp(req: CompReq, background_tasks: BackgroundTasks) -> CompResult:
     background_tasks.add_task(do_comp, req=req)
     return CompResult(requestId=req.requestId, status=RAStatus.received.value, message='task received')
+
 
 def do_comp(req: CompReq):
     try:

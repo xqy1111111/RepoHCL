@@ -30,6 +30,7 @@ class Symbol:
     def __hash__(self):
         return hash(self.base)
 
+
 @dataclass
 class FieldDef:
     name: str
@@ -51,6 +52,7 @@ class FuncDef:
     beginLine: int = 0
     endLine: int = 0
     declFile: str = ''
+
     # return_type: FieldDef
 
     def __hash__(self):
@@ -102,6 +104,7 @@ class ClazzDef:
             return False
         return self.symbol == other.symbol
 
+
 T = TypeVar('T', bound=Doc)
 
 
@@ -145,31 +148,33 @@ class EvaContext:
 
     def save_function_doc(self, symbol: Symbol, doc: ApiDoc):
         func_def = self.function_map.get(symbol)
-        self.save_doc(f'{self.doc_path}/{func_def.filename}.{ApiDoc.doc_type()}.md', doc)
+        self.save_doc(os.path.join(f'{self.doc_path}', f'{func_def.filename}.{ApiDoc.doc_type()}.md'), doc)
 
     def load_function_doc(self, symbol: Symbol) -> Optional[ApiDoc]:
         func_def = self.function_map.get(symbol)
-        return self.load_doc(symbol, f'{self.doc_path}/{func_def.filename}.{ApiDoc.doc_type()}.md', ApiDoc)
+        return self.load_doc(symbol, os.path.join(f'{self.doc_path}', f'{func_def.filename}.{ApiDoc.doc_type()}.md'),
+                             ApiDoc)
 
     def save_clazz_doc(self, symbol: Symbol, doc: ClazzDoc):
         clazz_def = self.clazz_map.get(symbol)
-        self.save_doc(f'{self.doc_path}/{clazz_def.filename}.{ClazzDoc.doc_type()}.md', doc)
+        self.save_doc(os.path.join(f'{self.doc_path}', f'{clazz_def.filename}.{ClazzDoc.doc_type()}.md'), doc)
 
     def load_clazz_doc(self, symbol: Symbol) -> Optional[ClazzDoc]:
         clazz_def = self.clazz_map.get(symbol)
-        return self.load_doc(symbol, f'{self.doc_path}/{clazz_def.filename}.{ClazzDoc.doc_type()}.md', ClazzDoc)
+        return self.load_doc(symbol, os.path.join(f'{self.doc_path}', f'{clazz_def.filename}.{ClazzDoc.doc_type()}.md'),
+                             ClazzDoc)
 
     def save_module_doc(self, doc: ModuleDoc):
-        self.save_doc(f'{self.doc_path}/modules.md', doc)
+        self.save_doc(os.path.join(f'{self.doc_path}', 'modules.md'), doc)
 
     def load_module_docs(self) -> List[ModuleDoc]:
-        return self.load_docs(f'{self.doc_path}/modules.md', ModuleDoc)
+        return self.load_docs(os.path.join(f'{self.doc_path}', 'modules.md'), ModuleDoc)
 
     def save_repo_doc(self, doc):
-        self.save_doc(f'{self.doc_path}/repo.md', doc)
+        self.save_doc(os.path.join(f'{self.doc_path}', 'repo.md'), doc)
 
     def load_repo_doc(self) -> Optional[RepoDoc]:
-        docs = self.load_docs(f'{self.doc_path}/repo.md', RepoDoc)
+        docs = self.load_docs(os.path.join(f'{self.doc_path}', 'repo.md'), RepoDoc)
         if len(docs) == 0:
             return None
         return docs[0]

@@ -1,3 +1,4 @@
+import os.path
 from functools import reduce
 from typing import List
 
@@ -82,10 +83,14 @@ Here is the documentation of the functions referenced in the module:
 
 
 class ModuleMetric(Metric):
-    _v1_draft: str = 'modules-v1-draft.md'
 
-    def _draft(self, ctx):
-        existed_modules_doc = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
+    @classmethod
+    def get_draft_filename(cls, ctx):
+        return os.path.join(ctx.doc_path, 'modules-v1-draft.md')
+
+    @classmethod
+    def _draft(cls, ctx):
+        existed_modules_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
         if len(existed_modules_doc):
             logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_modules_doc)}')
             return
@@ -105,17 +110,17 @@ class ModuleMetric(Metric):
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         modules = ModuleDoc.from_doc(res)
         # 保存模块文档初稿
-        with open(f'{ctx.doc_path}/{self._v1_draft}', 'w') as f:
-            for m in modules:
-                f.write(m.markdown() + '\n')
+        for m in modules:
+            ctx.save_doc(cls.get_draft_filename(ctx), m)
         logger.info(f'[ModuleMetric] gen drafts for modules, modules count: {len(modules)}')
 
-    def _enhance(self, ctx):
+    @classmethod
+    def _enhance(cls, ctx):
         existed_modules_doc = ctx.load_module_docs()
         if len(existed_modules_doc):
             logger.info(f'[ModuleMetric] load docs, modules count: {len(existed_modules_doc)}')
             return
-        drafts = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
+        drafts = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
 
         # 优化模块文档
         def gen(i: int, m: ModuleDoc):

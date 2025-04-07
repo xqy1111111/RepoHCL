@@ -1,3 +1,4 @@
+import os
 from functools import reduce
 from typing import List
 
@@ -72,7 +73,10 @@ Please Note:
 
 # V2本质上是先分解再合并，分解时使用聚类算法，合并时使用大模型。V2的效果并不比V1更好，但减少了上下文量。当具备1000个API时，V1的上下文量达到64+K。V2的上下文量则在10K以内。
 class ModuleV2Metric(ModuleMetric):
-    _v2_draft: str = 'modules-v2-draft.md'
+
+    @classmethod
+    def get_v2_draft_filename(cls, ctx):
+        return os.path.join(ctx.doc_path, 'modules-v2-draft.md')
 
     def eva(self, ctx):
         # 使用聚类算法初步划分模块，并由大模型总结模块文档
@@ -82,8 +86,9 @@ class ModuleV2Metric(ModuleMetric):
         # 由大模型增强模块文档
         self._enhance(ctx)
 
-    def _draft(self, ctx):
-        existed_modules_doc = ctx.load_docs(f'{ctx.doc_path}/{self._v2_draft}', ModuleDoc)
+    @classmethod
+    def _draft(cls, ctx):
+        existed_modules_doc = ctx.load_docs(cls.get_v2_draft_filename(ctx), ModuleDoc)
         if len(existed_modules_doc):
             logger.info(f'[FunctionMetric] load module drafts, modules count: {len(existed_modules_doc)}')
             return
@@ -112,13 +117,14 @@ class ModuleV2Metric(ModuleMetric):
             docs = ModuleDoc.from_doc(res)
             # 保存模块文档
             for doc in docs:
-                ctx.save_doc(f'{ctx.doc_path}/{self._v2_draft}', doc)
+                ctx.save_doc(cls.get_v2_draft_filename(ctx), doc)
                 logger.info(f'[ModuleV2Metric] gen draft for module {doc.name}')
 
         TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=(args,)), cluster))).run()
 
-    def _merge(self, ctx: EvaContext):
-        existed_modules_doc = ctx.load_docs(f'{ctx.doc_path}/{self._v1_draft}', ModuleDoc)
+    @classmethod
+    def _merge(cls, ctx: EvaContext):
+        existed_modules_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
         if len(existed_modules_doc):
             logger.info(f'[ModuleV2Metric] load modules, modules count: {len(existed_modules_doc)}')
             return
@@ -130,5 +136,5 @@ class ModuleV2Metric(ModuleMetric):
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask(lambda x: x.replace('---', '').strip())
         docs = ModuleDoc.from_doc(res)
         for doc in docs:
-            ctx.save_doc(f'{ctx.doc_path}/{self._v1_draft}', doc)
+            ctx.save_doc(cls.get_draft_filename(ctx), doc)
         logger.info(f'[ModuleV2Metric] merge modules: {len(drafts)} -> {len(docs)}')

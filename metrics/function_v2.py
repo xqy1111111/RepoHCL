@@ -1,3 +1,4 @@
+import os.path
 from functools import reduce
 from typing import List
 
@@ -16,13 +17,17 @@ documentation_guideline = (
 
 
 class FunctionV2Metric(Metric):
-    _v2_draft: str = 'v2-draft.md'
+
+    @classmethod
+    def get_v2_draft_filename(cls, ctx, file: str) -> str:
+        return os.path.join(f'{ctx.doc_path}', f'{file}.{ApiDoc.doc_type()}.v2_draft.md')
 
     def eva(self, ctx):
         self._draft(ctx)
         self._revise(ctx)
 
-    def _draft(self, ctx):
+    @classmethod
+    def _draft(cls, ctx):
         functions = ctx.function_map
         callgraph = ctx.callgraph
         # 逆拓扑排序callgraph
@@ -32,7 +37,7 @@ class FunctionV2Metric(Metric):
         def gen(fname: str):
             symbol = Symbol(base=fname)
             f: FuncDef = functions.get(symbol)
-            if ctx.load_doc(symbol, f'{ctx.doc_path}/{f.filename}.{ApiDoc.doc_type()}.{self._v2_draft}.md', ApiDoc):
+            if ctx.load_doc(symbol, cls.get_v2_draft_filename(ctx, f.filename), ApiDoc):
                 logger.info(f'[FunctionV2Metric] load {symbol.base}')
                 return
             referenced = list(
@@ -45,12 +50,13 @@ class FunctionV2Metric(Metric):
             res = f'### {symbol.base}\n' + res
             doc = ApiDoc.from_chapter(res)
             doc.code = f'```C++\n{f.code}\n```'
-            ctx.save_doc(f'{ctx.doc_path}/{f.filename}.{ApiDoc.doc_type()}.{self._v2_draft}.md', doc)
+            ctx.save_doc(cls.get_v2_draft_filename(ctx, f.filename), doc)
             logger.info(f'[FunctionV2Metric] parse {symbol.base}')
 
         TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
 
-    def _revise(self, ctx):
+    @classmethod
+    def _revise(cls, ctx):
         functions = ctx.function_map
         callgraph = ctx.callgraph
         logger.info(f'[FunctionV2Metric] revise doc for functions, functions count: {len(callgraph)}')
@@ -65,7 +71,7 @@ class FunctionV2Metric(Metric):
             referencer: List[ApiDoc] = list(filter(lambda s: s is not None,
                                                    map(lambda s: ctx.load_function_doc(Symbol(base=s)),
                                                        callgraph.predecessors(symbol.base))))
-            draft_doc = ctx.load_doc(symbol, f'{ctx.doc_path}/{f.filename}.{ApiDoc.doc_type()}.{self._v2_draft}.md', ApiDoc)
+            draft_doc = ctx.load_doc(symbol, cls.get_v2_draft_filename(ctx, f.filename), ApiDoc)
             if len(referencer) == 0:
                 ctx.save_function_doc(symbol, draft_doc)
                 return

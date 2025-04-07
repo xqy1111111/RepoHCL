@@ -1,3 +1,4 @@
+import os.path
 import re
 
 from loguru import logger
@@ -132,14 +133,14 @@ class RepoMetric(Metric):
         doc = RepoDoc.from_chapter(res)
         # 保存仓库文档初稿
         if ProjectSettings().is_debug():
-            with open(f'{ctx.doc_path}/repo-0.md', 'w') as f:
+            with open(os.path.join(ctx.doc_path, 'repo-draft.md'), 'w') as f:
                 f.write(doc.markdown())
         logger.info(f'[RepoMetric] gen doc for repo, doc inited')
         prompt2 = questions_prompt.format(repo_doc=doc.markdown())
         questions_doc = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
         # 保存仓库文档QA
         if ProjectSettings().is_debug():
-            with open(f'{ctx.doc_path}/repo-1.md', 'w') as f:
+            with open(os.path.join(ctx.doc_path, 'repo-q.md'), 'w') as f:
                 f.write(questions_doc)
         logger.info(f'[RepoMetric] gen doc for repo, questions inited')
         question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
@@ -187,7 +188,7 @@ class RepoMetric(Metric):
         qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
         if ProjectSettings().is_debug():
-            with open(f'{ctx.doc_path}/repo-2.md', 'w') as f:
+            with open(os.path.join(ctx.doc_path, 'repo-qa.md'), 'w') as f:
                 f.write(qa_doc)
         prompt3 = repo_enhance_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '), qa=prefix_with(qa_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt3).ask()

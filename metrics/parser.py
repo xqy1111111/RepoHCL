@@ -3,12 +3,12 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from itertools import islice
 from typing import List, Dict
 
 import networkx as nx
 import pydot
-
 from loguru import logger
 
 from utils import gen_sh
@@ -29,8 +29,9 @@ class ClangParser(Metric):
             records = json.loads(f.read())
             for k, v in records.items():
                 file: str = v.get('filename')
+                file = file.replace('/', os.sep)
                 # 不是绝对路径说明已经处理过了，跳过
-                if not file.startswith('/'):
+                if not file.startswith(os.sep):
                     continue
                 # 仅保留resource下的文件
                 # resource_path = 'resource/libxml2/'
@@ -38,7 +39,7 @@ class ClangParser(Metric):
                 if i == -1:
                     to_remove.append(k)
                     continue
-                v['filename'] = file[i + len(resource_path):].strip('/')
+                v['filename'] = file[i + len(resource_path):].strip(os.sep)
             for k in to_remove:
                 del records[k]
         if len(to_remove):
@@ -52,7 +53,7 @@ class ClangParser(Metric):
     @staticmethod
     def _load_clazz_typedefs(output_path: str, resource_path: str) -> Dict[str, Symbol]:
         clazz_typedefs_map = {}
-        records = ClangParser._read_file(f'{output_path}/typedefs.json', resource_path)
+        records = ClangParser._read_file(os.path.join(output_path, 'typedefs.json'), resource_path)
         for k, v in records.items():
             source_type = v.get('sourceType')
             if source_type not in ('struct', 'other') or v.get('source').get('literal') == k:
@@ -72,7 +73,7 @@ class ClangParser(Metric):
     @staticmethod
     def _load_functions(output_path: str, resource_path: str, typedefs: Dict[str, Symbol]) -> Dict[Symbol, FuncDef]:
         function_map = {}
-        records = ClangParser._read_file(f'{output_path}/functions.json', resource_path)
+        records = ClangParser._read_file(os.path.join(output_path, 'functions.json'), resource_path)
         for k, v in records.items():
             params = []
             for p in v.get('parameters'):
@@ -82,10 +83,11 @@ class ClangParser(Metric):
                 params.append(FieldDef(name=p.get('name'),
                                        symbol=symbol,
                                        access=p.get('access')))
-            with open(resource_path + '/' + v.get('filename'), 'r') as f:
+            with open(os.path.join(resource_path, v.get('filename')), 'r') as f:
                 lines = list(islice(f, int(v.get('beginLine')) - 1, int(v.get('endLine'))))
                 code = ''.join(lines).strip()
-            function_map[Symbol(base=k)] = FuncDef(symbol=Symbol(base=k), access='', params=params, declFile=v.get('declFilename'),
+            function_map[Symbol(base=k)] = FuncDef(symbol=Symbol(base=k), access='', params=params,
+                                                   declFile=v.get('declFilename'),
                                                    filename=v.get('filename'), code=code, visible=v.get('visible'),
                                                    beginLine=v.get('beginLine'), endLine=v.get('endLine'))
 
@@ -130,9 +132,9 @@ class ClangParser(Metric):
                                         filename=v.get('filename'),
                                         beginLine=v.get('beginLine'), endLine=v.get('endLine'))
 
-        records = ClangParser._read_file(f'{output_path}/structs.json', resource_path)
+        records = ClangParser._read_file(os.path.join(output_path, 'structs.json'), resource_path)
         _load_clazz(records)
-        records = ClangParser._read_file(f'{output_path}/records.json', resource_path)
+        records = ClangParser._read_file(os.path.join(output_path, 'records.json'), resource_path)
         _load_clazz(records)
         return clazz_map
 
@@ -163,7 +165,7 @@ class ClangParser(Metric):
     @staticmethod
     def _load_callgraph(output_path: str, functions: Dict[Symbol, FuncDef]) -> nx.DiGraph:
         # 解析.dot转为DiGraph
-        (dot,) = pydot.graph_from_dot_file(f'{output_path}/cg.dot')
+        (dot,) = pydot.graph_from_dot_file(os.path.join(output_path, 'cg.dot'))
         callgraph = nx.DiGraph()
         name_map = {}
         # 添加节点
@@ -228,7 +230,8 @@ class ClangParser(Metric):
         ctx.clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.function_map, clazz_typedefs_map)
         logger.info(f'[ClangParser] class size: {len(ctx.clazz_map)}')
         ctx.clazz_callgraph = self._load_clazz_callgraph(ctx.clazz_map)
-        logger.info(f'[ClangParser] class callgraph size: {len(ctx.clazz_callgraph.nodes)}, {len(ctx.clazz_callgraph.edges)}')
+        logger.info(
+            f'[ClangParser] class callgraph size: {len(ctx.clazz_callgraph.nodes)}, {len(ctx.clazz_callgraph.edges)}')
 
     @staticmethod
     def _load_clazz_callgraph(clazz_map):
@@ -242,24 +245,26 @@ class ClangParser(Metric):
 
     @staticmethod
     def _prepare(output_path: str, resource_path: str):
+        # TODO windows当前不支持，下列命令行及gen_sh在windows下无法执行
+        if sys.platform.startswith("win"):
+            raise Exception("Windows is not supported")
         if os.path.exists(output_path):
             return
 
         def cmd(command: str, path: str = resource_path):
-            subprocess.run(command, shell=True, cwd=path)
-            logger.info('command executed: ' + command)
+            subprocess.run(command.replace('/', os.sep), shell=True, cwd=path.replace('/', os.sep))
+            logger.info('[ClangParser] command executed: ' + command)
 
         os.environ['CC'] = 'clang-9'
         os.environ['CXX'] = 'clang++-9'
         # 生成makefile文件
-        logger.info(f'{resource_path} content:{str(os.listdir(resource_path))}')
-        if os.path.exists(f'{resource_path}/configure'):
+        if os.path.exists(os.path.join(resource_path, 'configure')):
             cmd('./configure')
-        elif os.path.exists(f'{resource_path}/Configure'):
+        elif os.path.exists(os.path.join(resource_path, 'Configure')):
             cmd('./Configure')
-        elif os.path.exists(f'{resource_path}/CMakeLists.txt'):
+        elif os.path.exists(os.path.join(resource_path, 'CMakeLists.txt')):
             cmd('cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_PREFIX=/lib/llvm-9 .')
-        if not os.path.exists(f'{resource_path}/Makefile'):
+        if not os.path.exists(os.path.join(resource_path, 'Makefile')):
             raise Exception('Makefile not found in root')
         # 基于makefile生成compile_commands.json
         cmd('bear make -j`nproc`')
@@ -269,12 +274,12 @@ class ClangParser(Metric):
         cmd('chmod +x buildast.sh')
         cmd('./buildast.sh')
         # 在resource_path目录下解析ast
-        shutil.copy('lib/cge', resource_path)
+        shutil.copy(os.path.join('lib', 'cge'), resource_path)
         cmd(f'./cge astList.txt')
         # 将解析结果移动到output_path
         os.makedirs(output_path, exist_ok=True)
-        shutil.move(f'{resource_path}/structs.json', output_path)
-        shutil.move(f'{resource_path}/typedefs.json', output_path)
-        shutil.move(f'{resource_path}/functions.json', output_path)
-        shutil.move(f'{resource_path}/records.json', output_path)
-        shutil.move(f'{resource_path}/cg.dot', output_path)
+        shutil.move(os.path.join(resource_path, 'structs.json'), output_path)
+        shutil.move(os.path.join(resource_path, 'typedefs.json'), output_path)
+        shutil.move(os.path.join(resource_path, 'functions.json'), output_path)
+        shutil.move(os.path.join(resource_path, 'records.json'), output_path)
+        shutil.move(os.path.join(resource_path, 'cg.dot'), output_path)

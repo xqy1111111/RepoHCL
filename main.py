@@ -19,34 +19,35 @@ def response_with_gitbook(doc_path: str):
     for root, _, files in os.walk(doc_path):
         root = root[len(doc_path) + 1:]
         if len(root) > 0:
-            summary += f'{(len(root.split("/")) - 1) * "  "}* [{root}]\n'
+            summary += f'{(len(root.split(os.sep)) - 1) * "  "}* [{root}]\n'
         for f in sorted(files, key=summary_sort):
             if len(root) > 0:
-                summary += f'{len(root.split("/")) * "  "}* [{f[:-3]}]({root}/{f})\n'
+                summary += f'{len(root.split(os.sep)) * "  "}* [{f[:-3]}]({os.path.join(root, f)}\n'
             else:
                 summary += f'* [{f[:-3]}]({f})\n'
-    with open(f'{doc_path}/SUMMARY.md', 'w') as f:
+    with open(os.path.join(doc_path, 'SUMMARY.md'), 'w') as f:
         f.write(summary)
-    with open(f'{doc_path}/README.md', 'w') as f:
+    with open(os.path.join(doc_path, 'README.md'), 'w') as f:
         f.write(f'### {os.path.basename(doc_path)}\n')
 
 
 @click.command()
 @click.argument('path', type=click.Path(exists=True))
 def main(path):
-    path = click.format_filename(path).strip('/')
+    path = click.format_filename(path).strip(os.sep)
     basename = os.path.basename(path)
     # 移动到工作路径
-    shutil.copytree(path, f'resource/{basename}', dirs_exist_ok=True)
+    shutil.copytree(path, os.path.join('resource', basename), dirs_exist_ok=True)
     # 初始化上下文
-    ctx = EvaContext(doc_path=f'docs/{basename}', resource_path=f'resource/{basename}', output_path=f'output/{basename}')
+    ctx = EvaContext(doc_path=os.path.join('docs', basename), resource_path=os.path.join('resource', basename),
+                     output_path=os.path.join('output', basename))
     # 开始运行
     eva(ctx)
     # 生成gitbook输出
-    response_with_gitbook(f'docs/{basename}')
+    response_with_gitbook(os.path.join('docs', basename))
     # 清扫工作路径
-    shutil.rmtree(f'resource/{basename}')
-    shutil.rmtree(f'output/{basename}')
+    shutil.rmtree(os.path.join('resource', basename))
+    shutil.rmtree(os.path.join('output', basename))
 
 
 def eva(ctx: EvaContext):
@@ -66,5 +67,3 @@ def eva(ctx: EvaContext):
 
 if __name__ == '__main__':
     main()
-
-
