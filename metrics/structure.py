@@ -5,7 +5,7 @@ from loguru import logger
 from .metric import Metric
 from utils import SimpleLLM, ChatCompletionSettings
 
-
+# 生成软件文件结构
 class StructureMetric(Metric):
     def eva(self, ctx):
         structure = self._traverse(ctx.resource_path)

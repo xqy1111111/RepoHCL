@@ -5,38 +5,37 @@ from loguru import logger
 from utils import SimpleLLM, ChatCompletionSettings, prefix_with, TaskDispatcher, llm_thread_pool
 from .doc import ApiDoc, ClazzDoc
 from .function import documentation_guideline
-from .metric import Metric, FieldDef, ClazzDef, Symbol
+from .metric import Metric, FieldDef, ClazzDef
 
 
+# 为类生成文档
 class ClazzMetric(Metric):
     def eva(self, ctx):
-        clazz = ctx.clazz_map
         callgraph = ctx.clazz_callgraph
-        logger.info(f'[ClazzMetric] gen doc for class, class count: {len(ctx.clazz_map)}')
+        logger.info(f'[ClazzMetric] gen doc for class, class count: {len(callgraph)}')
 
         # 生成文档
-        def gen(cname: str):
-            symbol = Symbol(base=cname)
+        def gen(symbol: str):
             if ctx.load_clazz_doc(symbol):
-                logger.info(f'[ClazzMetric] load {symbol.base}')
+                logger.info(f'[ClazzMetric] load {symbol}')
                 return
-            c: ClazzDef = clazz.get(symbol)
+            c: ClazzDef = ctx.clazz(symbol)
             referenced = list(
                 filter(lambda s: s is not None,
-                       map(lambda s: ctx.load_clazz_doc(Symbol(base=s)), callgraph.predecessors(symbol.base)))
+                       map(lambda s: ctx.load_clazz_doc(s), callgraph.predecessors(symbol)))
             )
             functions = list(
                 filter(lambda s: s is not None,
                        map(lambda s: ctx.load_function_doc(s.symbol), c.functions))
             )
             prompt = ClazzPromptBuilder().structure(ctx.structure).attributes(c.fields).code(c.code).functions(
-                functions).referenced(referenced).file_path(c.filename).name(symbol.base).build()
+                functions).referenced(referenced).file_path(c.filename).name(symbol).build()
             llm = SimpleLLM(ChatCompletionSettings())
             res = llm.add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
-            res = f'### {symbol.base}\n' + res
+            res = f'### {symbol}\n' + res
             doc = ClazzDoc.from_chapter(res)
             ctx.save_clazz_doc(symbol, doc)
-            logger.info(f'[ClazzMetric] parse {symbol.base}')
+            logger.info(f'[ClazzMetric] parse {symbol}')
 
         TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
 

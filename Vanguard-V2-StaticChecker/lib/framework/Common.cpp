@@ -582,27 +582,50 @@ private:
     }
     return nullptr;
   }
-  //层级遍历搜索DeclRefExpr节点
+  #include <queue>
+  #include <set>
+  #include "clang/AST/Expr.h"  // 假设 DeclRefExpr 和 Stmt 定义在此头文件中
+
   std::set<DeclRefExpr *> getDeclRefs(Expr *node) {
     std::set<DeclRefExpr *> res;
     if (node == nullptr || node == NULL) {
       return res;
     }
 
+    // 直接检查当前节点是否是 DeclRefExpr
     if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(node)) {
       res.insert(DRE);
     }
-    queue<Stmt *> q;
+
+    std::queue<Stmt *> q;
     q.push(node);
     while (!q.empty()) {
-      auto top = q.front();
+      Stmt* top = q.front();
       q.pop();
+
+      // TODO: 源代码，有空指针异常，未解决
+      /**
       if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(top)) {
-        res.insert(DRE);
+              res.insert(DRE);
+            }
+            auto it = top->child_begin();
+            for (; it != top->child_end(); ++it) {
+              q.push(*it);
+            }
       }
-      auto it = top->child_begin();
-      for (; it != top->child_end(); ++it) {
-        q.push(*it);
+      **/
+      // 对于每个节点，在尝试访问其子节点之前检查是否为空
+      if (top != nullptr) {
+        for (auto it = top->child_begin(); it != top->child_end(); ++it) {
+          Stmt* child = *it;
+          // 在此处添加对 child 是否为 nullptr 的检查,
+          if (child != nullptr) {
+            if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(child)) {
+              res.insert(DRE);
+            }
+            q.push(child);
+          }
+        }
       }
     }
     return res;

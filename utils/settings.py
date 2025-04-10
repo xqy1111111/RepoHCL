@@ -5,7 +5,7 @@ from typing import Any
 
 from decouple import config
 from transformers import AutoTokenizer, AutoModel
-
+from loguru import logger
 
 # 兼容python3.8
 class StrEnum(str, Enum):
@@ -38,7 +38,6 @@ class ProjectSettings:
     def is_debug(self):
         return self.log_level == LogLevel.DEBUG
 
-
 llm_thread_pool = ThreadPoolExecutor(1) if ProjectSettings().is_debug() else ThreadPoolExecutor(16)
 
 @dataclass
@@ -59,3 +58,4 @@ class RagSettings:
     model: Any = field(default_factory=lambda: config('TOKENIZER_MODEL', default='Amu/tao-8k', cast=lambda x: AutoModel.from_pretrained(x)))
     dim: int = field(default_factory=lambda: config('TOKENIZER_DIM', cast=int, default=1024))
 
+logger.add('application.log', level=ProjectSettings().log_level, rotation='1 day', retention='7 days', encoding='utf-8')

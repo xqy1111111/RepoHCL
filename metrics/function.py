@@ -5,7 +5,7 @@ from loguru import logger
 from utils import SimpleLLM, ChatCompletionSettings, prefix_with, TaskDispatcher
 from utils.settings import llm_thread_pool
 from .doc import ApiDoc
-from .metric import Metric, FieldDef, FuncDef, Symbol
+from .metric import Metric, FieldDef, FuncDef
 
 documentation_guideline = (
     "Keep in mind that your audience is document readers, so use a deterministic tone to generate precise content and don't let them know "
@@ -14,35 +14,34 @@ documentation_guideline = (
 )
 
 
+# 为函数生成文档
 class FunctionMetric(Metric):
 
     def eva(self, ctx):
-        functions = ctx.function_map
         callgraph = ctx.callgraph
         logger.info(f'[FunctionMetric] gen doc for functions, functions count: {len(callgraph)}')
 
-        # 生成文档:
-        def gen(fname: str):
-            symbol = Symbol(base=fname)
+        # 生成文档
+        def gen(symbol: str):
             if ctx.load_function_doc(symbol):
-                logger.info(f'[FunctionMetric] load {symbol.base}')
+                logger.info(f'[FunctionMetric] load {symbol}')
                 return
-            f: FuncDef = functions.get(symbol)
+            f: FuncDef = ctx.func(symbol)
             referencer = list(
                 filter(lambda s: s is not None,
-                       map(lambda s: ctx.load_function_doc(Symbol(base=s)), callgraph.successors(symbol.base)))
+                       map(lambda s: ctx.load_function_doc(s), callgraph.successors(symbol)))
             )
             referenced = list(
                 filter(lambda s: s is not None,
-                       map(lambda s: ctx.load_function_doc(Symbol(base=s)), callgraph.predecessors(symbol.base)))
+                       map(lambda s: ctx.load_function_doc(s), callgraph.predecessors(symbol)))
             )
             prompt = FunctionPromptBuilder().structure(ctx.structure).parameters(f.params).code(f.code).referencer(
-                referencer).referenced(referenced).file_path(f.filename).name(symbol.base).build()
+                referencer).referenced(referenced).file_path(f.filename).name(symbol).build()
             res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
-            res = f'### {symbol.base}\n' + res
+            res = f'### {symbol}\n' + res
             doc = ApiDoc.from_chapter(res)
             ctx.save_function_doc(symbol, doc)
-            logger.info(f'[FunctionMetric] parse {symbol.base}')
+            logger.info(f'[FunctionMetric] parse {symbol}')
 
         TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
 

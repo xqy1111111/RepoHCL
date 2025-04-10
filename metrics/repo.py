@@ -6,7 +6,7 @@ from loguru import logger
 from utils import SimpleLLM, prefix_with, ChatCompletionSettings, ToolsLLM, TaskDispatcher, Task
 from utils.settings import ProjectSettings, llm_thread_pool
 from .doc import RepoDoc
-from .metric import Metric, Symbol
+from .metric import Metric
 
 repo_summarize_prompt = '''
 You are a senior software engineer. You have developed a C/C++ software. 
@@ -114,7 +114,7 @@ Please Note:
 - Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Do not output descriptions of improvements or summary in the end.
 '''
 
-
+# 为仓库生成文档，使用大模型的tool调用能力回答问题，验证文档的准确性
 class RepoMetric(Metric):
     def eva(self, ctx):
         existed_repo_doc = ctx.load_repo_doc()
@@ -149,7 +149,7 @@ class RepoMetric(Metric):
             map(lambda x: f'**Question**: {x.group(2)}. {x.group(1)}', question_pattern.finditer(questions_doc)))
 
         def read_functions_md(name: str):
-            return ctx.load_function_doc(Symbol(base=name)).markdown()
+            return ctx.load_function_doc(name).markdown()
 
         tools = [
             {

@@ -156,7 +156,7 @@ std::string accessToString(AccessSpecifier access){
         case AccessSpecifier::AS_private:
             return "private";
         default:
-            return "private";
+            return "public";
     }
 }
 
@@ -224,11 +224,7 @@ void saveCXXRecords(std::vector <std::string> &ASTs) {
 	        cJSON * fieldsArray = cJSON_CreateArray();
             // 遍历类的方法
             for(auto method: decl->methods()){
-                std::string methodName = common::getPrettyName(method);
-                cJSON *mj = cJSON_CreateObject();
-                cJSON_AddStringToObject(mj, "name", methodName.c_str());
-                cJSON_AddStringToObject(mj, "access", accessToString(method->getAccess()).c_str());
-                cJSON_AddItemToArray(methodsArray, mj);
+                cJSON_AddItemToArray(methodsArray, cJSON_CreateString(common::getPrettyName(method).c_str()));
             }
             // 遍历类的成员变量
             for(auto field: decl->fields()){
@@ -238,7 +234,7 @@ void saveCXXRecords(std::vector <std::string> &ASTs) {
                 cJSON_AddStringToObject(fj, "access", accessToString(field->getAccess()).c_str());
                 cJSON_AddItemToArray(fieldsArray, fj);
             }
-            cJSON_AddItemToObject(rj, "methods", methodsArray);
+            cJSON_AddItemToObject(rj, "functions", methodsArray);
             cJSON_AddItemToObject(rj, "fields", fieldsArray);
             cJSON_AddBoolToObject(rj, "visible", decl->isExternallyVisible());
             cJSON_AddItemToObject(records_json, name.c_str(), rj);
@@ -421,6 +417,7 @@ ASTManager::ASTManager(std::vector <std::string> &ASTs, ASTResource &resource,
                 cJSON_AddNumberToObject(tj, "endLine", endLine);
                 cJSON_AddBoolToObject(tj, "visible", isFunctionVisible(FD));
                 cJSON_AddStringToObject(tj, "declFilename", declFileName.c_str());
+                cJSON_AddStringToObject(tj, "access", accessToString(FD->getAccess()).c_str());
                 cJSON *parameters = cJSON_CreateArray();
                 for(auto param: FD->parameters()){
                     cJSON_AddItemToArray(parameters, qualifyType2JSON(param->getType()));

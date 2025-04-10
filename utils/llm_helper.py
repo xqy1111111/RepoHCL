@@ -9,7 +9,7 @@ from httpx import ReadTimeout
 
 from .settings import ProjectSettings, ChatCompletionSettings
 
-
+# 通用的LLM代理
 class SimpleLLM:
     def __init__(self, setting: ChatCompletionSettings):
         self._setting = setting

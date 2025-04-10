@@ -5,8 +5,9 @@ from typing import List
 from loguru import logger
 
 from utils import SimpleLLM, prefix_with, ChatCompletionSettings, TaskDispatcher, llm_thread_pool, Task
+from . import FuncDef
 from .doc import ModuleDoc
-from .metric import Metric, Symbol
+from .metric import Metric
 
 modules_summarize_prompt = '''
 You are an expert in software architecture analysis. 
@@ -81,12 +82,12 @@ Here is the documentation of the functions referenced in the module:
 {functions_doc}
 '''
 
-
+# 为模块生成文档
 class ModuleMetric(Metric):
 
     @classmethod
     def get_draft_filename(cls, ctx):
-        return os.path.join(ctx.doc_path, 'modules-v1-draft.md')
+        return os.path.join(ctx.doc_path, 'modules.v1_draft.md')
 
     @classmethod
     def _draft(cls, ctx):
@@ -95,16 +96,14 @@ class ModuleMetric(Metric):
             logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_modules_doc)}')
             return
         # 提取所有用户可见的函数
-        apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible
-                                                   and ctx.function_map.get(x).declFile.endswith('.h'),
-                                         ctx.function_map.keys()))
+        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
         logger.info(f'[ModuleMetric] gen drafts for modules, apis count: {len(apis)}')
         if len(apis) == 0:
             logger.warning(f'[ModuleMetric] no apis found, cannot generate modules docs')
             return
         # 使用函数描述组织上下文
         api_docs = reduce(lambda x, y: x + y,
-                          map(lambda a: f'- {a.base}\n > {ctx.load_function_doc(a).description}\n\n', apis))
+                          map(lambda a: f'- {a}\n > {ctx.load_function_doc(a).description}\n\n', apis))
         prompt = modules_summarize_prompt.format(api_docs=api_docs)
         # 生成模块文档
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
@@ -127,7 +126,7 @@ class ModuleMetric(Metric):
             # 使用完整函数文档组织上下文
             functions_doc = []
             for f in m.functions:
-                functions_doc.append(ctx.load_function_doc(Symbol(base=f)).markdown())
+                functions_doc.append(ctx.load_function_doc(f).markdown())
             functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')
             # 使用原模块文档组织上下文
             module_doc = prefix_with(m.markdown(), '> ')

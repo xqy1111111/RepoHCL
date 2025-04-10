@@ -8,7 +8,7 @@ from utils import SimpleLLM, prefix_with, ChatCompletionSettings, SimpleRAG, Rag
     llm_thread_pool, Task
 from . import ModuleMetric
 from .doc import ModuleDoc
-from .metric import Symbol, EvaContext
+from .metric import EvaContext
 
 modules_prompt = '''
 You are an expert in software architecture analysis. 
@@ -71,7 +71,8 @@ Please Note:
 '''
 
 
-# V2本质上是先分解再合并，分解时使用聚类算法，合并时使用大模型。V2的效果并不比V1更好，但减少了上下文量。当具备1000个API时，V1的上下文量达到64+K。V2的上下文量则在10K以内。
+# 为模块生成文档V2，
+# 本质上是先分解再合并，分解时使用聚类算法，合并时使用大模型。V2的效果并不比V1更好，但减少了上下文量。当具备1000个API时，V1的上下文量达到64+K。V2的上下文量则在10K以内。
 class ModuleV2Metric(ModuleMetric):
 
     @classmethod
@@ -93,9 +94,7 @@ class ModuleV2Metric(ModuleMetric):
             logger.info(f'[FunctionMetric] load module drafts, modules count: {len(existed_modules_doc)}')
             return
         # 提取所有用户可见的函数
-        apis: List[Symbol] = list(filter(lambda x: ctx.function_map.get(x).visible
-                                                   and ctx.function_map.get(x).declFile.endswith('.h'),
-                                         ctx.function_map.keys()))
+        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
         if len(apis) == 0:
             logger.warning(f'[ModuleV2Metric] no apis found, cannot generate modules docs')
             return
@@ -109,7 +108,7 @@ class ModuleV2Metric(ModuleMetric):
         def gen(g: List[int]):
             # 使用函数描述组织上下文
             api_docs = reduce(lambda x, y: x + y,
-                              map(lambda x: f'- {apis[x].base}\n > {ctx.load_function_doc(apis[x]).description}\n\n',
+                              map(lambda x: f'- {apis[x]}\n > {ctx.load_function_doc(apis[x]).description}\n\n',
                                   g))
             prompt2 = modules_prompt.format(api_doc=prefix_with(api_docs, '>'))
             # 生成模块文档

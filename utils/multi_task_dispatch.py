@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import uuid
 from collections import deque, defaultdict
 from concurrent.futures import as_completed
@@ -30,7 +29,9 @@ class Task:
         return self.id == other.id
 
 
+# 任务调度器，将一组任务按照依赖关系分组，并行执行
 class TaskDispatcher:
+    # 需要输入一个线程池
     def __init__(self, pool: ThreadPoolExecutor):
         self._pool = pool
         self._tasks = nx.DiGraph()
@@ -65,16 +66,15 @@ class TaskDispatcher:
             raise ValueError("Graph is not acyclic")
 
         groups = reverse_topo(self._tasks)
-        for g in groups:
+        logger.info(f'[TaskDispatcher] split {len(self._tasks)} tasks into {len(groups)} groups')
+        for i, g in enumerate(groups):
             futures = {self._pool.submit(task.f, *task.args): task for task in g}
             for future in as_completed(futures):
-                task = futures[future]
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Task {task.id} failed with exception: {e}")
+                future.result()
+            logger.info(f'[TaskDispatcher] finished group {i + 1}, size: {len(g)}')
 
 
+# 获取有向图的逆拓扑排序
 def reverse_topo(G: nx.DiGraph) -> List[List[Any]]:
     # 初始化所有节点的出度为分数
     out_degree = {node: G.out_degree(node) for node in G.nodes()}
@@ -110,6 +110,7 @@ def reverse_topo(G: nx.DiGraph) -> List[List[Any]]:
 
 if __name__ == '__main__':
     import time
+
 
     def task(n):
         print(f"Task {n} started")

@@ -11,7 +11,7 @@ from utils.settings import RagSettings
 
 
 # from sklearn.cluster import DBSCAN
-
+# 简单的RAG实现
 class SimpleRAG:
     def __init__(self, setting: RagSettings):
         self._index = faiss.IndexFlatL2(setting.dim)

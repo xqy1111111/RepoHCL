@@ -4,7 +4,6 @@ import re
 import shutil
 import subprocess
 import sys
-from itertools import islice
 from typing import List, Dict
 
 import networkx as nx
@@ -12,18 +11,18 @@ import pydot
 from loguru import logger
 
 from utils import gen_sh
-from .metric import Metric, Symbol, FuncDef, FieldDef, EvaContext, ClazzDef
+from .metric import Metric, FuncDef, FieldDef, EvaContext, ClazzDef
 
-
+# 解析C/C++软件，获取函数调用图和类调用图
 class ClangParser(Metric):
 
-    @staticmethod
-    def _flush_file(path: str, records: Dict) -> None:
+    @classmethod
+    def _flush_file(cls, path: str, records: Dict) -> None:
         with open(path, 'w') as f:
             f.write(json.dumps(records, indent=4))
 
-    @staticmethod
-    def _read_file(path: str, resource_path: str) -> Dict:
+    @classmethod
+    def _read_file(cls, path: str, resource_path: str) -> Dict:
         to_remove = []
         with open(path, 'r') as f:
             records = json.loads(f.read())
@@ -43,157 +42,162 @@ class ClangParser(Metric):
             for k in to_remove:
                 del records[k]
         if len(to_remove):
-            ClangParser._flush_file(path, records)
+            cls._flush_file(path, records)
         return records
 
-    @staticmethod
-    def _trim_type(t: str) -> str:
+    # 去除类型中的修饰符
+    @classmethod
+    def _trim_type(cls, t: str) -> str:
         return re.sub(r'[*&]|(\[\d*])|const|volatile|restrict', '', t).strip()
 
-    @staticmethod
-    def _load_clazz_typedefs(output_path: str, resource_path: str) -> Dict[str, Symbol]:
+    # 生成类重名列表，用于分析类与函数/类之间的关联
+    @classmethod
+    def _load_clazz_typedefs(cls, output_path: str, resource_path: str) -> Dict[str, str]:
+        # xmlParserInputBufferPtr -> xmlParserInputBuffer * -> xmlParserInputBuffer
         clazz_typedefs_map = {}
-        records = ClangParser._read_file(os.path.join(output_path, 'typedefs.json'), resource_path)
+        records = cls._read_file(os.path.join(output_path, 'typedefs.json'), resource_path)
         for k, v in records.items():
             source_type = v.get('sourceType')
             if source_type not in ('struct', 'other') or v.get('source').get('literal') == k:
                 continue
-            literal = v.get('source').get('literal')
-            clazz_typedefs_map[k] = Symbol(base=ClangParser._trim_type(literal), literal=literal)
+            clazz_typedefs_map[k] = cls._trim_type(v.get('source').get('literal'))
+        # xmlParserInputBufferPtrPtr -> xmlParserInputBufferPtr -> xmlParserInputBuffer
         simplified_map = {}
-        for t in clazz_typedefs_map:
-            init_t = final_value = t
+        for s, t in clazz_typedefs_map.items():
             while t in clazz_typedefs_map:
-                next_t = clazz_typedefs_map[t].literal
-                final_value = final_value.replace(t, next_t)
-                t = ClangParser._trim_type(next_t)
-            simplified_map[init_t] = Symbol(base=t, literal=final_value)
+                t = clazz_typedefs_map[t]
+            simplified_map[s] = t
         return simplified_map
 
-    @staticmethod
-    def _load_functions(output_path: str, resource_path: str, typedefs: Dict[str, Symbol]) -> Dict[Symbol, FuncDef]:
+    @classmethod
+    def _load_functions(cls, output_path: str, resource_path: str) -> Dict[str, FuncDef]:
         function_map = {}
-        records = ClangParser._read_file(os.path.join(output_path, 'functions.json'), resource_path)
+        records = cls._read_file(os.path.join(output_path, 'functions.json'), resource_path)
         for k, v in records.items():
             params = []
             for p in v.get('parameters'):
-                literal = p.get('literal')
-                symbol = ClangParser._field_symbol_to_final(
-                    Symbol(base=ClangParser._trim_type(literal), literal=literal), typedefs)
-                params.append(FieldDef(name=p.get('name'),
-                                       symbol=symbol,
-                                       access=p.get('access')))
+                params.append(FieldDef(name=p.get('name'), symbol=p.get('literal'), access=p.get('access')))
             with open(os.path.join(resource_path, v.get('filename')), 'r') as f:
-                lines = list(islice(f, int(v.get('beginLine')) - 1, int(v.get('endLine'))))
-                code = ''.join(lines).strip()
-            function_map[Symbol(base=k)] = FuncDef(symbol=Symbol(base=k), access='', params=params,
-                                                   declFile=v.get('declFilename'),
-                                                   filename=v.get('filename'), code=code, visible=v.get('visible'),
-                                                   beginLine=v.get('beginLine'), endLine=v.get('endLine'))
+                code = ''.join(f.readlines()[int(v.get('beginLine')) - 1: int(v.get('endLine'))])
+            visible = bool(v.get('visible')) and str(v.get('declFilename')).endswith(('.h', '.hpp'))
+            function_map[k] = FuncDef(symbol=k, params=params, filename=v.get('filename'), code=code,
+                                      access=v.get('access'), visible=visible)
 
         return function_map
 
-    @staticmethod
-    def _field_symbol_to_final(symbol: Symbol, typedefs: Dict[str, Symbol]) -> Symbol:
-        base: str = symbol.base
-        literal: str = symbol.literal
-        # 获得field的终态类型
-        final_symbol: Symbol = typedefs.get(base, Symbol(base=base))
-        # 修改field的类型字面量
-        literal = literal.replace(base, final_symbol.literal)
-        # 修改field的基础类型为终态类型
-        base = final_symbol.base
-        return Symbol(base=base, literal=literal)
+    @classmethod
+    def _build_class_code(cls, symbol: str, fields: List[FieldDef], functions: List[FuncDef]) -> str:
+        code = 'class ' + symbol + ' {\n'
+        for access in ['public', 'protected', 'private']:
+            filter_fields = list(filter(lambda x: x.access == access, fields))
+            filter_functions = list(filter(lambda x: x.access == access, functions))
+            if len(filter_fields) == 0 and len(filter_functions) == 0:
+                return ''
+            s = f'{access}:\n'
+            for f in filter_fields:
+                s += f'  {f.symbol} {f.name};\n'
+            if len(filter_fields) > 0:
+                s += '\n'
+            for f in filter_functions:
+                s += f'  {f.symbol};\n'
+            code += s
+        code += '};'
+        return code
 
-    @staticmethod
-    def _load_clazz(output_path: str, resource_path: str, functions: Dict[Symbol, FuncDef],
-                    typedefs: Dict[str, Symbol]) -> Dict[Symbol, ClazzDef]:
-        clazz_map = {}
-
-        def _load_clazz(r: Dict):
-            for k, v in r.items():
-                s = Symbol(base=k)
-                fields = []
-                for f in v.get('fields'):
-                    literal = f.get('literal')
-                    symbol = ClangParser._field_symbol_to_final(
-                        Symbol(base=ClangParser._trim_type(literal), literal=literal), typedefs)
-                    fields.append(FieldDef(name=f.get('name'),
-                                           symbol=symbol,
-                                           access=f.get('access')))
-
+    # 加载类列表
+    @classmethod
+    def _load_clazz(cls, output_path: str, resource_path: str, callgraph: nx.DiGraph,
+                    typedefs: Dict[str, str]) -> Dict[str, ClazzDef]:
+        clazz_map: Dict[str, ClazzDef] = {}
+        for source_file in ['structs.json', 'records.json']:
+            records = cls._read_file(os.path.join(output_path, source_file), resource_path)
+            for s, v in records.items():
+                fields = list(map(lambda x: FieldDef(name=x.get('name'), symbol=x.get('literal'),
+                                                     access=x.get('access')), v.get('fields')))
+                # C++类，文件中关联了函数
                 if 'functions' in v:
-                    clazz_functions = list(map(lambda x: FuncDef(symbol=Symbol(base=x.get('name')),
-                                                                 access=x.get('access')), v.get('functions')))
+                    clazz_functions = list(map(lambda x: callgraph.nodes[x]['attr'], v.get('functions')))
                 else:
-                    clazz_functions = ClangParser._find_related_functions(s, functions)
+                    # Struct,需要手动找到关联函数
+                    clazz_functions = cls._find_related_functions(s, callgraph, typedefs)
 
                 clazz_map[s] = ClazzDef(symbol=s, fields=fields, functions=clazz_functions,
                                         filename=v.get('filename'),
-                                        beginLine=v.get('beginLine'), endLine=v.get('endLine'))
+                                        code=cls._build_class_code(s, fields, clazz_functions))
 
-        records = ClangParser._read_file(os.path.join(output_path, 'structs.json'), resource_path)
-        _load_clazz(records)
-        records = ClangParser._read_file(os.path.join(output_path, 'records.json'), resource_path)
-        _load_clazz(records)
         return clazz_map
 
-    @staticmethod
-    def _find_related_functions(s: Symbol, functions: Dict[Symbol, FuncDef]) -> List[FuncDef]:
+    # 识别与struct关联的函数
+    @classmethod
+    def _find_related_functions(cls, clazz: str, callgraph: nx.DiGraph, typedefs: Dict[str, str]) -> List[
+        FuncDef]:
         related = []
-        for k, v in functions.items():
+        # 通过callgraph遍历所有FuncDef
+        for _, attrs in callgraph.nodes(data=True):
+            v = attrs['attr']
+            # 函数参数内包含类，则认为是相关函数
+            # TODO，相关函数太多，应当对这些函数做一定的排序筛选
             for p in v.params:
-                if p.symbol == s:
-                    related.append(FuncDef(symbol=k, access='public'))
+                s = cls._trim_type(p.symbol)
+                # 将参数类型去除修饰符后，找到typedefs中对应的类型，与clazz比较
+                # clazz在声明时一定不会被typedef或修饰
+                if typedefs.get(s, s) == clazz:
+                    related.append(v)
         return related
 
-    @staticmethod
-    def _load_sample_callgraph(output_path: str, functions: Dict[Symbol, FuncDef], starts: List[Symbol]) -> nx.DiGraph:
-        callgraph = ClangParser._load_callgraph(output_path, functions)
-        q = list(map(lambda x: x.base, starts))
+    # 筛选部分函数，生成小规模的调用图
+    # ctx.callgraph = self._load_sample_callgraph(ctx.output_path, function_map, ['xmlParseDoc', 'xmlParseFile'])
+    @classmethod
+    def _load_sample_callgraph(cls, output_path: str, functions: Dict[str, FuncDef], starts: List[str]) -> nx.DiGraph:
+        callgraph = cls._load_callgraph(output_path, functions)
+        # 函数名转FuncDef，找不到则报错
+        q = list(map(lambda x: functions[x], starts))
         v = set()
         ng = nx.DiGraph()
         while len(q):
             s = q.pop(0)
             v.add(s)
-            for t in list(filter(lambda t: t not in v, callgraph.successors(s))):
+            for t in list(filter(lambda x: x not in v, callgraph.successors(s))):
                 q.append(t)
                 ng.add_edge(s, t)
         logger.info(f'[ClangParser] sample callgraph: {len(callgraph.nodes)} -> {len(ng.nodes)}, starts: {starts}')
         return ng
 
-    @staticmethod
-    def _load_callgraph(output_path: str, functions: Dict[Symbol, FuncDef]) -> nx.DiGraph:
+    # 生成函数间调用图
+    @classmethod
+    def _load_callgraph(cls, output_path: str, functions: Dict[str, FuncDef]) -> nx.DiGraph:
         # 解析.dot转为DiGraph
         (dot,) = pydot.graph_from_dot_file(os.path.join(output_path, 'cg.dot'))
         callgraph = nx.DiGraph()
-        name_map = {}
+        # 记录.dot中节点ID和名称的映射关系
+        id_map: Dict[str, str] = {}
         # 添加节点
         for node in dot.get_nodes():
-            if isinstance(node, pydot.Node):
-                label = node.get('label')[1:-1]
-                name_map[node.get_name()] = label
-                if Symbol(base=label) in functions:
-                    callgraph.add_node(label)
+            # 删除前后的“符号
+            label = node.get('label').strip('"')
+            # 仅同时在functions.json和cg.dot中存在的节点才添加到callgraph中
+            if label in functions:
+                # callgraph的节点是str函数名称,属性为FuncDef
+                callgraph.add_node(label, attr=functions[label])
+                id_map[node.get_name()] = label
+
         # 添加边
         for edge in dot.get_edges():
-            source = name_map[edge.get_source()]
-            destination = name_map[edge.get_destination()]
-            if source == destination:
+            # 排除自引用
+            if edge.get_source() == edge.get_destination():
                 continue
-            if Symbol(base=source) not in functions or Symbol(base=destination) not in functions:
+            # 边的起点和终点必须在functions.json中存在
+            if edge.get_source() not in id_map or edge.get_destination() not in id_map:
                 continue
-            callgraph.add_edge(source, destination)
+            callgraph.add_edge(id_map[edge.get_source()], id_map[edge.get_destination()])
 
-        # 去除环
-        def _remove_cycles(g: nx.DiGraph):
-            while not nx.is_directed_acyclic_graph(g):
-                cycle = list(nx.find_cycle(g))
-                edge_to_remove = cycle[0]
-                logger.debug(f'remove {edge_to_remove}')
-                g.remove_edge(*edge_to_remove)
-
-        _remove_cycles(callgraph)
+        # 去除环，对于每个环，删除rank值最小的节点的入边
+        rank = nx.pagerank(callgraph)
+        while not nx.is_directed_acyclic_graph(callgraph):
+            cycle = list(nx.find_cycle(callgraph))
+            edge_to_remove = min(cycle, key=lambda x: rank[x[1]])
+            callgraph.remove_edge(*edge_to_remove)
+            logger.debug(f'[ClangParser] remove {edge_to_remove}')
 
         return callgraph
 
@@ -202,52 +206,41 @@ class ClangParser(Metric):
         logger.info(f'[ClangParser] prepared')
         clazz_typedefs_map = self._load_clazz_typedefs(ctx.output_path, ctx.resource_path)
         logger.info(f'[ClangParser] typedef size: {len(clazz_typedefs_map)}')
-        ctx.function_map = self._load_functions(ctx.output_path, ctx.resource_path, clazz_typedefs_map)
-        # ctx.callgraph = self._load_sample_callgraph(ctx.output_path, ctx.function_map, [
-        #     Symbol(base='xmlDocPtr xmlReadFile(const char * URL, const char * encoding, int options)'),
-        #     Symbol(base='xmlDocPtr xmlNewDoc(const xmlChar * version)'),
-        #     Symbol(base='xmlNodePtr xmlNewNode(xmlNsPtr ns, const xmlChar * name)'),
-        #     Symbol(base='xmlChar * xmlGetProp(const xmlNode * node, const xmlChar * name)'),
-        #     Symbol(
-        #         base='int xmlSaveFormatFileEnc(const char * filename, xmlDocPtr cur, const char * encoding, int format)'),
-        #     Symbol(base='xmlNsPtr xmlSearchNs(xmlDocPtr doc, xmlNodePtr node, const xmlChar * nameSpace)'),
-        #     Symbol(base='xmlXPathObjectPtr xmlXPathEval(const xmlChar * str, xmlXPathContextPtr ctx)'),
-        #     Symbol(base='void xmlFreeDoc(xmlDocPtr cur)'),
-        #     Symbol(base='int xmlCharEncOutFunc(xmlCharEncodingHandler * handler, xmlBufferPtr out, xmlBufferPtr in)'),
-        #     Symbol(base='xmlNodePtr xmlAddChild(xmlNodePtr parent, xmlNodePtr cur)'),
-        #     Symbol(base='void xmlCleanupParser()'),
-        #     Symbol(base='int xmlSaveFile(const char * filename, xmlDocPtr cur)'),
-        #     Symbol(base='xmlDocPtr xmlReadFd(int fd, const char * URL, const char * encoding, int options)'),
-        #     Symbol(base='xmlAttrPtr xmlHasProp(const xmlNode * node, const xmlChar * name)'),
-        #     Symbol(base='xmlNodePtr xmlDocGetRootElement(const xmlDoc * doc)'),
-        #     Symbol(base='xmlXPathContextPtr xmlXPathNewContext(xmlDocPtr doc)'),
-        #     Symbol(base='xmlXPathObjectPtr xmlXPathEvalExpression(const xmlChar * str, xmlXPathContextPtr ctxt)'),
-        # ])
-        ctx.callgraph = self._load_callgraph(ctx.output_path, ctx.function_map)
-        ctx.function_map = {k: v for k, v in ctx.function_map.items() if k.base in ctx.callgraph.nodes}
-        logger.info(f'[ClangParser] function size: {len(ctx.function_map)}')
+        function_map = self._load_functions(ctx.output_path, ctx.resource_path)
+        ctx.callgraph = self._load_callgraph(ctx.output_path, function_map)
         logger.info(f'[ClangParser] callgraph size: {len(ctx.callgraph.nodes)}, {len(ctx.callgraph.edges)}')
-        ctx.clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.function_map, clazz_typedefs_map)
-        logger.info(f'[ClangParser] class size: {len(ctx.clazz_map)}')
-        ctx.clazz_callgraph = self._load_clazz_callgraph(ctx.clazz_map)
+        clazz_map = self._load_clazz(ctx.output_path, ctx.resource_path, ctx.callgraph, clazz_typedefs_map)
+        ctx.clazz_callgraph = self._load_clazz_callgraph(clazz_map, clazz_typedefs_map)
         logger.info(
             f'[ClangParser] class callgraph size: {len(ctx.clazz_callgraph.nodes)}, {len(ctx.clazz_callgraph.edges)}')
 
-    @staticmethod
-    def _load_clazz_callgraph(clazz_map):
+    @classmethod
+    def _load_clazz_callgraph(cls, clazz_map: Dict[str, ClazzDef], typedefs: Dict[str, str]):
         graph = nx.DiGraph()
         for s, clazz in clazz_map.items():
-            graph.add_node(s.base)
+            graph.add_node(s, attr=clazz)
+        for s, clazz in clazz_map.items():
+            # 描述类间的组合关系
+            # class A {
+            #   B b;
+            # }
+            # A -> B
             for f in clazz.fields:
-                if f.symbol in clazz_map and f.symbol != s:
-                    graph.add_edge(s.base, f.symbol.base)
+                t = cls._trim_type(f.symbol)
+                t = typedefs.get(t, t)
+                # 如果不在类的声明图中，说明该类型不是项目中定义的类。例如：int
+                if t in graph:
+                    graph.add_edge(s, t)
+            # TODO，描述类间的继承关系
         return graph
 
+    # 调用clang解析软件
     @staticmethod
     def _prepare(output_path: str, resource_path: str):
         # TODO windows当前不支持，下列命令行及gen_sh在windows下无法执行
         if sys.platform.startswith("win"):
             raise Exception("Windows is not supported")
+        # 已经生成过解析文件，直接返回
         if os.path.exists(output_path):
             return
 

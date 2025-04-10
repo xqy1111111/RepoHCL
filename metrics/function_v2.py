@@ -7,7 +7,7 @@ from loguru import logger
 
 from utils import SimpleLLM, ChatCompletionSettings, prefix_with, TaskDispatcher, llm_thread_pool
 from .doc import ApiDoc
-from .metric import Metric, FieldDef, FuncDef, Symbol
+from .metric import Metric, FieldDef, FuncDef
 
 documentation_guideline = (
     "Keep in mind that your audience is document readers, so use a deterministic tone to generate precise content and don't let them know "
@@ -15,7 +15,7 @@ documentation_guideline = (
     "for the target object in a professional way."
 )
 
-
+# 为函数生成文档V2
 class FunctionV2Metric(Metric):
 
     @classmethod
@@ -28,49 +28,46 @@ class FunctionV2Metric(Metric):
 
     @classmethod
     def _draft(cls, ctx):
-        functions = ctx.function_map
         callgraph = ctx.callgraph
         # 逆拓扑排序callgraph
         logger.info(f'[FunctionV2Metric] gen doc for functions, functions count: {len(callgraph)}')
 
         # 生成文档
-        def gen(fname: str):
-            symbol = Symbol(base=fname)
-            f: FuncDef = functions.get(symbol)
+        def gen(symbol: str):
+            f: FuncDef = ctx.func(symbol)
             if ctx.load_doc(symbol, cls.get_v2_draft_filename(ctx, f.filename), ApiDoc):
-                logger.info(f'[FunctionV2Metric] load {symbol.base}')
+                logger.info(f'[FunctionV2Metric] load {symbol}')
                 return
             referenced = list(
                 filter(lambda s: s is not None,
-                       map(lambda s: ctx.load_function_doc(Symbol(base=s)), callgraph.successors(symbol.base)))
+                       map(lambda s: ctx.load_function_doc(s), callgraph.successors(symbol)))
             )
             prompt = FunctionPromptBuilder().structure(ctx.structure).parameters(f.params).code(f.code).referenced(
-                referenced).file_path(f.filename).name(symbol.base).build()
+                referenced).file_path(f.filename).name(symbol).build()
             res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
-            res = f'### {symbol.base}\n' + res
+            res = f'### {symbol}\n' + res
             doc = ApiDoc.from_chapter(res)
             doc.code = f'```C++\n{f.code}\n```'
             ctx.save_doc(cls.get_v2_draft_filename(ctx, f.filename), doc)
-            logger.info(f'[FunctionV2Metric] parse {symbol.base}')
+            logger.info(f'[FunctionV2Metric] parse {symbol}')
 
         TaskDispatcher(llm_thread_pool).map(callgraph, gen).run()
 
     @classmethod
     def _revise(cls, ctx):
-        functions = ctx.function_map
         callgraph = ctx.callgraph
         logger.info(f'[FunctionV2Metric] revise doc for functions, functions count: {len(callgraph)}')
 
         # 生成文档
-        def gen(fname: str):
-            symbol = Symbol(base=fname)
+        def gen(symbol: str):
             if ctx.load_function_doc(symbol):
-                logger.info(f'[FunctionV2Metric] load {symbol.base}')
+                logger.info(f'[FunctionV2Metric] load {symbol}')
                 return
-            f: FuncDef = functions.get(symbol)
-            referencer: List[ApiDoc] = list(filter(lambda s: s is not None,
-                                                   map(lambda s: ctx.load_function_doc(Symbol(base=s)),
-                                                       callgraph.predecessors(symbol.base))))
+            f: FuncDef = ctx.func(symbol)
+            referencer: List[ApiDoc] = list(
+                filter(lambda s: s is not None,
+                       map(lambda s: ctx.load_function_doc(s), callgraph.predecessors(symbol)))
+            )
             draft_doc = ctx.load_doc(symbol, cls.get_v2_draft_filename(ctx, f.filename), ApiDoc)
             if len(referencer) == 0:
                 ctx.save_function_doc(symbol, draft_doc)
@@ -82,10 +79,10 @@ class FunctionV2Metric(Metric):
                 function_doc=prefix_with(draft_doc.markdown(), '> '))
             res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
             doc: ApiDoc = ApiDoc.from_chapter(res)
-            doc.name = symbol.base
+            doc.name = symbol
             doc.code = f'```C++\n{f.code}\n```'
             ctx.save_function_doc(symbol, doc)
-            logger.info(f'[FunctionV2Metric] revise {symbol.base}')
+            logger.info(f'[FunctionV2Metric] revise {symbol}')
 
         TaskDispatcher(llm_thread_pool).map(nx.reverse(callgraph), gen).run()
 

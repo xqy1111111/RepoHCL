@@ -15,4 +15,6 @@ RUN python3 genastcmd.py
 RUN chmod +x buildast.sh
 RUN ./buildast.sh | tee buildast.log
 
-RUN cmake-build-debug/tools/CallGraphGen/cge astList.txt
+WORKDIR /root/output
+
+RUN ~/vanguard/cmake-build-debug/tools/CallGraphGen/cge ~/vanguard/astList.txt

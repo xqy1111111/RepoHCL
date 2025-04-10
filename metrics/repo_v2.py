@@ -118,6 +118,7 @@ Please Note:
 '''
 
 
+# 为仓库生成文档V2，使用RAG验证文档的准确性
 class RepoV2Metric(Metric):
     def eva(self, ctx):
         existed_repo_doc = ctx.load_repo_doc()
@@ -153,7 +154,7 @@ class RepoV2Metric(Metric):
 
         # 回答每个问题
         rag = SimpleRAG(RagSettings())
-        functions: List[ApiDoc] = list(map(lambda x: ctx.load_function_doc(x), ctx.function_map.keys()))
+        functions: List[ApiDoc] = list(map(lambda x: ctx.load_function_doc(x), ctx.callgraph.nodes))
         rag.add(list(map(lambda x: x.detail, functions)))
         questions_with_answer = []
 
