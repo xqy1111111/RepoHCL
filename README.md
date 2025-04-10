@@ -11,8 +11,8 @@
 ### 项目结构
 ```
 ├── docker                      # docker封装的项目demo
-│    ├── dockerfile.cg_python   # main.py的docker运行环境
-│    └── dockerfile.cg_service  # service.py的docker运行环境
+│    ├── cmd.dockerfile         # main.py的docker运行环境，命令行执行工具
+│    └── service.dockerfile     # service.py的docker运行环境，启动服务端
 ├── lib                         # 项目依赖的库，主要包含Vanguard-V2-StaticChecker的编译产物
 │    └── cge
 ├── Vanguard-V2-StaticChecker   # C/C++项目静态分析工具
