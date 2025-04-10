@@ -48,7 +48,7 @@
 ```
 ### 使用说明
 - 项目基于OpenAI协议调用LLM，需在.env中设置调用的LLM服务的域名`OPENAI_BASE_URL`、模型`MODEL`、温度`MODEL_TEMPERATURE`、输出语言`MODEL_LANGUAGE`，并配置环境变量`OPENAI_API_KEY`作为密钥。默认采用阿里百炼的qwen-plus。
-- 目前提供了docker/dockerfile.cg_python，可以对测试项目md5进行一次完整的分析。本地运行依赖可参考该dockerfile。
+- 目前提供了docker/cmd.dockerfile，可以对测试项目md5进行一次完整的分析。本地运行依赖可参考该dockerfile。
 - RepoMetricV2使用到HuggingFace拉取远端模型，若网络不佳，可在.env中设置`HF_ENDPOINT=https://hf-mirror.com`。
 - 由于不同C/C++项目的编译方式不同，目前需要根据项目特征手动设置合适的命令以生成AST。
 - 在.env中设置`LOG_LEVEL`可以控制日志的输出级别，默认`DEBUG`级别。
