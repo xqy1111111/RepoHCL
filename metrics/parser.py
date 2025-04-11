@@ -237,13 +237,12 @@ class ClangParser(Metric):
     # 调用clang解析软件
     @staticmethod
     def _prepare(output_path: str, resource_path: str):
-        # TODO windows当前不支持，下列命令行及gen_sh在windows下无法执行
-        if sys.platform.startswith("win"):
-            raise Exception("Windows is not supported")
         # 已经生成过解析文件，直接返回
         if os.path.exists(output_path):
             return
-
+        # TODO windows当前不支持，下列命令行及gen_sh在windows下无法执行
+        if sys.platform.startswith("win"):
+            raise Exception("Windows is not supported")
         def cmd(command: str, path: str = resource_path):
             subprocess.run(command.replace('/', os.sep), shell=True, cwd=path.replace('/', os.sep))
             logger.info('[ClangParser] command executed: ' + command)
