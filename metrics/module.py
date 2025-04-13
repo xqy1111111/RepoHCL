@@ -5,7 +5,7 @@ from typing import List
 from loguru import logger
 
 from utils import SimpleLLM, prefix_with, ChatCompletionSettings, TaskDispatcher, llm_thread_pool, Task
-from . import FuncDef
+from . import EvaContext
 from .doc import ModuleDoc
 from .metric import Metric
 
@@ -82,6 +82,7 @@ Here is the documentation of the functions referenced in the module:
 {functions_doc}
 '''
 
+
 # 为模块生成文档
 class ModuleMetric(Metric):
 
@@ -90,17 +91,13 @@ class ModuleMetric(Metric):
         return os.path.join(ctx.doc_path, 'modules.v1_draft.md')
 
     @classmethod
-    def _draft(cls, ctx):
-        existed_modules_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
-        if len(existed_modules_doc):
-            logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_modules_doc)}')
-            return
+    def _draft(cls, ctx) -> List[ModuleDoc]:
+        existed_draft_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
+        if len(existed_draft_doc):
+            logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_draft_doc)}')
+            return existed_draft_doc
         # 提取所有用户可见的函数
         apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
-        logger.info(f'[ModuleMetric] gen drafts for modules, apis count: {len(apis)}')
-        if len(apis) == 0:
-            logger.warning(f'[ModuleMetric] no apis found, cannot generate modules docs')
-            return
         # 使用函数描述组织上下文
         api_docs = reduce(lambda x, y: x + y,
                           map(lambda a: f'- {a}\n > {ctx.load_function_doc(a).description}\n\n', apis))
@@ -112,21 +109,24 @@ class ModuleMetric(Metric):
         for m in modules:
             ctx.save_doc(cls.get_draft_filename(ctx), m)
         logger.info(f'[ModuleMetric] gen drafts for modules, modules count: {len(modules)}')
+        return modules
 
     @classmethod
-    def _enhance(cls, ctx):
+    def _enhance(cls, ctx, drafts: List[ModuleDoc]):
         existed_modules_doc = ctx.load_module_docs()
         if len(existed_modules_doc):
             logger.info(f'[ModuleMetric] load docs, modules count: {len(existed_modules_doc)}')
             return
-        drafts = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
 
         # 优化模块文档
         def gen(i: int, m: ModuleDoc):
             # 使用完整函数文档组织上下文
             functions_doc = []
             for f in m.functions:
-                functions_doc.append(ctx.load_function_doc(f).markdown())
+                try:
+                    functions_doc.append(ctx.load_function_doc(f).markdown())
+                except KeyError:
+                    logger.warning(f'[ModuleMetric] function doc not found: {f}')
             functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')
             # 使用原模块文档组织上下文
             module_doc = prefix_with(m.markdown(), '> ')
@@ -140,7 +140,17 @@ class ModuleMetric(Metric):
 
         TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=args), enumerate(drafts)))).run()
 
+    @classmethod
+    def _check(cls, ctx: EvaContext) -> bool:
+        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
+        if len(apis) == 0:
+            logger.warning(f'[ModuleMetric] no apis found, cannot generate modules docs')
+            return False
+        logger.info(f'[ModuleMetric] apis count: {len(apis)}')
+        return True
 
     def eva(self, ctx):
-        self._draft(ctx)
-        self._enhance(ctx)
+        if not self._check(ctx):
+            return
+        drafts = self._draft(ctx)
+        self._enhance(ctx, drafts)

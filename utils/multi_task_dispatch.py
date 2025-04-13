@@ -66,12 +66,12 @@ class TaskDispatcher:
             raise ValueError("Graph is not acyclic")
 
         groups = reverse_topo(self._tasks)
-        logger.info(f'[TaskDispatcher] split {len(self._tasks)} tasks into {len(groups)} groups')
+        logger.debug(f'[TaskDispatcher] split {len(self._tasks)} tasks into {len(groups)} groups')
         for i, g in enumerate(groups):
             futures = {self._pool.submit(task.f, *task.args): task for task in g}
             for future in as_completed(futures):
                 future.result()
-            logger.info(f'[TaskDispatcher] finished group {i + 1}, size: {len(g)}')
+            logger.debug(f'[TaskDispatcher] finished group {i + 1}, size: {len(g)}')
 
 
 # 获取有向图的逆拓扑排序

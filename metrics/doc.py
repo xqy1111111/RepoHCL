@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 from abc import abstractmethod, ABC
-from typing import List, Optional, override
+from typing import List, Optional, override, TypeVar
 
 from pydantic import BaseModel, field_serializer
 
-
+# T 表示Doc的子类，在Python中仅用于类型提示
+T = TypeVar('T', bound='Doc')
 # 文档对象基类，描述了怎么从md文件中解析出文档对象，如何将文档对象转化为md文件
 class Doc(ABC, BaseModel):
     name: str  # 符号名称
@@ -14,7 +15,7 @@ class Doc(ABC, BaseModel):
 
     # 读取字符串，返回其中的所有文档对象
     @classmethod
-    def from_doc(cls, s: str) -> List[Doc]:
+    def from_doc(cls, s: str) -> List[T]:
         function_pattern = re.compile(r'(###.*?)(?=\n### |\Z)', re.DOTALL)
         res: List[Doc] = []
         for match in function_pattern.finditer(s):
@@ -23,7 +24,7 @@ class Doc(ABC, BaseModel):
 
     # 读取字符串，返回其中的一个文档对象
     @classmethod
-    def from_chapter(cls, s: str):
+    def from_chapter(cls, s: str) -> T:
         module_pattern = re.search(r'### (.*?)\n(.*?)(?=\n### |\Z)', s, re.DOTALL)
         name = module_pattern.group(1).strip()
         block = module_pattern.group(2)
@@ -156,22 +157,32 @@ class ModuleDoc(Doc):
 # 仓库文档
 class RepoDoc(Doc):
     features: List[str] = None  # 仓库的功能列表
+    standards: List[str] = None  # 仓库的协议列表
+    scenarios: List[str] = None  # 仓库的场景列表
 
     # 将字符串列表格式的功能列表在JSON序列化时，转为markdown格式的字符串
-    @field_serializer('features')
+    @field_serializer('features', 'standards', 'scenarios')
     def features_serializer(self, v: List[str], _info) -> str:
         return '\n'.join(map(lambda x: f'- {x}', v))
 
     @classmethod
     @override
-    def from_chapter_hook(cls, doc: ModuleDoc, block: str) -> ModuleDoc:
+    def from_chapter_hook(cls, doc: RepoDoc, block: str) -> RepoDoc:
         features_doc = cls.from_block(block, 'Features')
         doc.features = list(filter(lambda x: len(x), map(lambda x: x.strip('- '), features_doc.splitlines())))
+        standards_doc = cls.from_block(block, 'Standards')
+        doc.standards = list(filter(lambda x: len(x), map(lambda x: x.strip('- '), standards_doc.splitlines())))
+        scenarios_doc = cls.from_block(block, 'Scenarios')
+        if scenarios_doc:
+            doc.scenarios = list(filter(lambda x: len(x), map(lambda x: x.strip('- '), scenarios_doc.splitlines())))
         return doc
 
     @override
     def _markdown_hook(self) -> str:
         md = '#### Features\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.features)))
+        md += '#### Standards\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.standards)))
+        if self.scenarios:
+            md += '#### Scenarios\n{}\n\n'.format('\n'.join(map(lambda x: f'- {x}', self.scenarios)))
         return md.strip()
 
     @classmethod

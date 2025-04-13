@@ -80,30 +80,31 @@ class ModuleV2Metric(ModuleMetric):
         return os.path.join(ctx.doc_path, 'modules-v2-draft.md')
 
     def eva(self, ctx):
-        # 使用聚类算法初步划分模块，并由大模型总结模块文档
-        self._draft(ctx)
-        # 由大模型合并模块文档
-        self._merge(ctx)
-        # 由大模型增强模块文档
-        self._enhance(ctx)
-
-    @classmethod
-    def _draft(cls, ctx):
-        existed_modules_doc = ctx.load_docs(cls.get_v2_draft_filename(ctx), ModuleDoc)
-        if len(existed_modules_doc):
-            logger.info(f'[FunctionMetric] load module drafts, modules count: {len(existed_modules_doc)}')
+        if not self._check(ctx):
             return
+        # 使用聚类算法初步划分模块，并由大模型总结模块文档
+        drafts = self._draft_v2(ctx)
+        # 由大模型合并模块文档
+        drafts = self._merge(ctx, drafts)
+        # 由大模型增强模块文档
+        self._enhance(ctx, drafts)
+
+    # 将API分组，对每组API生成模块初稿
+    @classmethod
+    def _draft_v2(cls, ctx: EvaContext) -> List[ModuleDoc]:
+        existed_draft_doc = ctx.load_docs(cls.get_v2_draft_filename(ctx), ModuleDoc)
+        if len(existed_draft_doc):
+            logger.info(f'[ModuleV2Metric] load module drafts, modules count: {len(existed_draft_doc)}')
+            return existed_draft_doc
         # 提取所有用户可见的函数
         apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
-        if len(apis) == 0:
-            logger.warning(f'[ModuleV2Metric] no apis found, cannot generate modules docs')
-            return
-        logger.info(f'[ModuleV2Metric] gen draft for modules, apis count: {len(apis)}')
         rag = SimpleRAG(RagSettings())
         logger.info('[ModuleV2Metric] clustering...')
         cluster = rag.kmeans(
             list(map(lambda x: x.name + ': ' + x.description, map(lambda x: ctx.load_function_doc(x), apis))))
         logger.info(f'[ModuleV2Metric] cluster to {len(cluster)} groups')
+
+        drafts = []
 
         def gen(g: List[int]):
             # 使用函数描述组织上下文
@@ -118,18 +119,19 @@ class ModuleV2Metric(ModuleMetric):
             for doc in docs:
                 ctx.save_doc(cls.get_v2_draft_filename(ctx), doc)
                 logger.info(f'[ModuleV2Metric] gen draft for module {doc.name}')
+            # 由于GIL锁，多线程下，extend是原子操作，线程安全
+            drafts.extend(docs)
 
         TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=(args,)), cluster))).run()
+        return drafts
 
+    # 合并模块初稿
     @classmethod
-    def _merge(cls, ctx: EvaContext):
-        existed_modules_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
-        if len(existed_modules_doc):
-            logger.info(f'[ModuleV2Metric] load modules, modules count: {len(existed_modules_doc)}')
-            return
-        drafts = ctx.load_docs(f'{ctx.doc_path}/modules-v2-draft.md', ModuleDoc)
-        if len(drafts) == 0:
-            return
+    def _merge(cls, ctx: EvaContext, drafts: List[ModuleDoc]) -> List[ModuleDoc]:
+        existed_draft_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
+        if len(existed_draft_doc):
+            logger.info(f'[ModuleV2Metric] load modules, modules count: {len(existed_draft_doc)}')
+            return existed_draft_doc
         prompt = modules_merge_prompt.format(
             module_doc=prefix_with('\n'.join(map(lambda x: x.markdown(), drafts)), '>'))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask(lambda x: x.replace('---', '').strip())
@@ -137,3 +139,4 @@ class ModuleV2Metric(ModuleMetric):
         for doc in docs:
             ctx.save_doc(cls.get_draft_filename(ctx), doc)
         logger.info(f'[ModuleV2Metric] merge modules: {len(drafts)} -> {len(docs)}')
+        return docs

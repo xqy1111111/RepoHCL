@@ -187,6 +187,8 @@ Please Note:
         if len(ctx.repo):
             r = ctx.repo[0]
             r['features'] = list(map(lambda x: x.strip('- '), r['features'].splitlines()))
+            r['protocols'] = list(map(lambda x: x.strip('- '), r['protocols'].splitlines()))
+            r['scenarios'] = list(map(lambda x: x.strip('- '), r['scenarios'].splitlines()))
             s = RepoDoc.model_validate(r).markdown() + '\n'
         for m in ctx.modules:
             m['functions'] = list(map(lambda x: x.strip('- '), m['functions'].splitlines()))

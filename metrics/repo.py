@@ -1,10 +1,12 @@
 import os.path
 import re
+from typing import List
 
 from loguru import logger
 
 from utils import SimpleLLM, prefix_with, ChatCompletionSettings, ToolsLLM, TaskDispatcher, Task
-from utils.settings import ProjectSettings, llm_thread_pool
+from utils.settings import llm_thread_pool
+from . import EvaContext
 from .doc import RepoDoc
 from .metric import Metric
 
@@ -18,11 +20,15 @@ The standard format is in the Markdown reference paragraph below, and you do not
 > #### Description
 > A concise paragraph summarizing the software.
 > #### Features
-> - Feature1
-> - Feature2
+> - Feature1...
+> - Feature2...
+> #### Standards
+> - Standard1
+> - Standard2
 
 Please Note:
-- #### Features is a list of main features that the software providing to users. Each feature should be described in 1~2 sentences. Don't mention specific function names. Don't make up unverified features. 
+- #### Features is a list of main features that the software providing to users. Each feature should be described in one sentences. Don't mention specific function names. Don't make up unverified features. 
+- #### Standards is the names of standards that the software designed for. For example, most of the APIs in `cJSON` are designed for JSON serialization, we can speculate it support JSON 1.0. This example does not mean that the software implements JSON 1.0, so don't write it in the README unless you are sure about it.
 - The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
 - Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Don't output descriptions out of the format.
 
@@ -49,9 +55,10 @@ You'd better consider the following workflow:
 
 The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
 
-> - Q1: question 
+> - Q1: question?
 > - A1: how software X solve the question
-> - Q2: question
+> - Q2: question?
+> - A2: ...
 > - ...
 
 Please Note:
@@ -96,57 +103,113 @@ The questions are as follows.
 {qa}
 
 Now you have the confidence to improve this README based on the above QA.
+Especially, you should check the following points:
+1. The description should accurately and clearly describe the main functions of the software.
+2. Ensure that each feature is implemented in software and reflects its advantages over competing products.
+3. The standards should be verified and reflect the core functionality of the software.
 
-The improved README should keep the same format as before. To ensure the same format, you should follow the standard format in the Markdown reference paragraph below. You do not need to write the reference symbols `>` when you output:
+The improved README should keep the same format as before with a new section "#### Scenarios".
+To ensure the same format, you should follow the standard format in the Markdown reference paragraph below. You do not need to write the reference symbols `>` when you output:
 
 > ### README
 > #### Description
 > A concise paragraph summarizing the software.
 > #### Features
-> - Feature1
-> - Feature2
-
+> - Feature1...
+> - Feature2...
+> #### Standards
+> - Standard1
+> - Standard2
+> #### Scenarios
+> - Scenario1...
+> - Scenario2...
 
 Please Note:
-- #### Features is a list of main features that the software providing to users. Each feature should be described in 1~2 sentences. Don't mention specific function names. Don't make up unverified features. 
+- #### Features is a list of main features that the software providing to users. Each feature should be described in one sentences. Don't mention specific function names. Don't make up unverified features. 
+- #### Standards is the names of standards that the software designed for. For example, most of the APIs in `cJSON` are designed for JSON serialization, we can speculate it support JSON 1.0. This example does not mean that the software implements JSON 1.0, so don't write it in the README unless you are sure about it.
+- #### Scenarios is a list of scenarios that the software can be used in. For example, JSON is more suitable for serialization scenarios that require fast iteration and are easy for humans to read; while Protobuf is suitable for data exchange between systems that have high requirements for performance and cross-language communication.
 - The Level 4 headings in the format like `#### xxx` are fixed, don't change or translate them. 
-- You can revise the content in #### Description and #### Features sections if they are not consistent with the answers to the questions.
+- You can revise the content in #### Description, #### Features and #### Standards sections if they are not consistent with the answers to the questions.
 - Don't add new Level 3 or Level 4 headings. Do not write anything outside the format. Do not output descriptions of improvements or summary in the end.
 '''
 
+
 # 为仓库生成文档，使用大模型的tool调用能力回答问题，验证文档的准确性
 class RepoMetric(Metric):
-    def eva(self, ctx):
-        existed_repo_doc = ctx.load_repo_doc()
-        if existed_repo_doc:
-            logger.info(f'[RepoMetric] load repo')
-            return
+
+    @classmethod
+    def get_draft_filename(cls, ctx):
+        return os.path.join(ctx.doc_path, 'repo-draft.md')
+
+    @classmethod
+    def get_qa_filename(cls, ctx):
+        return os.path.join(ctx.doc_path, 'repo-q.md')
+
+    @classmethod
+    def get_qa_answer_filename(cls, ctx):
+        return os.path.join(ctx.doc_path, 'repo-a.md')
+
+    # 生成仓库文档初稿
+    @classmethod
+    def _draft(cls, ctx: EvaContext) -> RepoDoc:
+        # 读取存在的仓库文档初稿
+        existed_draft_doc = ctx.load_docs(cls.get_draft_filename(ctx), RepoDoc)
+        if len(existed_draft_doc):
+            logger.info(f'[RepoMetric] load repo draft')
+            return existed_draft_doc[0]
         # 使用模块文档组织上下文
         modules = ctx.load_module_docs()
-        logger.info(f'[RepoMetric] gen doc for repo, modules count: {len(modules)}')
-        if len(modules) == 0:
-            logger.warning(f'[RepoMetric] no module found, cannot generate repo doc')
-            return
         modules_doc = '\n\n---\n\n'.join(map(lambda m: m.markdown(), modules))
         prompt = repo_summarize_prompt.format(modules_doc=prefix_with(modules_doc, '> '))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         doc = RepoDoc.from_chapter(res)
         # 保存仓库文档初稿
-        if ProjectSettings().is_debug():
-            with open(os.path.join(ctx.doc_path, 'repo-draft.md'), 'w') as f:
-                f.write(doc.markdown())
-        logger.info(f'[RepoMetric] gen doc for repo, doc inited')
-        prompt2 = questions_prompt.format(repo_doc=doc.markdown())
-        questions_doc = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
-        # 保存仓库文档QA
-        if ProjectSettings().is_debug():
-            with open(os.path.join(ctx.doc_path, 'repo-q.md'), 'w') as f:
-                f.write(questions_doc)
-        logger.info(f'[RepoMetric] gen doc for repo, questions inited')
-        question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
+        ctx.save_doc(cls.get_draft_filename(ctx), doc)
+        logger.info(f'[RepoMetric] gen doc for repo, draft inited')
+        return doc
 
+    # 基于仓库文档初稿，生成问题列表
+    @classmethod
+    def _questions(cls, ctx: EvaContext, draft: RepoDoc) -> List[str]:
+        # 读取存在的问题列表
+        if os.path.exists(cls.get_qa_filename(ctx)):
+            logger.info(f'[RepoMetric] load repo questions')
+            with open(cls.get_qa_filename(ctx), 'r') as f:
+                questions = f.readlines()
+                return list(map(lambda x: x.strip(), questions))
+        prompt = questions_prompt.format(repo_doc=draft.markdown())
+        questions_doc = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
+        question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
         questions = list(
-            map(lambda x: f'**Question**: {x.group(2)}. {x.group(1)}', question_pattern.finditer(questions_doc)))
+            map(lambda x: f'{x.group(1)}({x.group(2)})'.strip(), question_pattern.finditer(questions_doc)))
+        # 保存仓库文档QA
+        with open(cls.get_qa_filename(ctx), 'w') as f:
+            f.write('\n'.join(questions))
+
+        logger.info(f'[RepoMetric] gen doc for repo, questions inited')
+        return questions
+
+
+    # 检查仓库文档能否生成
+    @classmethod
+    def _check(cls, ctx: EvaContext) -> bool:
+        modules = ctx.load_module_docs()
+        if len(modules) == 0:
+            logger.warning(f'[RepoMetric] no module found, cannot generate repo doc')
+            return False
+        logger.info(f'[RepoMetric] gen doc for repo, modules count: {len(modules)}')
+        return True
+
+
+    # 回答问题
+    @classmethod
+    def _answer(cls, ctx: EvaContext, draft: RepoDoc, questions: List[str]) -> List[str]:
+        # 读取存在的回答
+        if os.path.exists(cls.get_qa_answer_filename(ctx)):
+            logger.info(f'[RepoMetric] load repo questions answer')
+            with open(cls.get_qa_answer_filename(ctx), 'r') as f:
+                answers = f.readlines()
+                return list(map(lambda x: x.strip(), answers))
 
         def read_functions_md(name: str):
             return ctx.load_function_doc(name).markdown()
@@ -171,27 +234,45 @@ class RepoMetric(Metric):
             }
         ]
         tools_map = {'read_functions_md': read_functions_md}
-        # 回答每个问题
-        toolLLM = (ToolsLLM(ChatCompletionSettings(), tools, tools_map)
-                   .add_system_msg(qa_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '),
-                                                    modules_doc=prefix_with(modules_doc, '> '))))
-        questions_with_answer = []
+        modules = ctx.load_module_docs()
+        modules_doc = '\n\n---\n\n'.join(map(lambda m: m.markdown(), modules))
+        # 回答每个问题，LLM结果直接写入答案数组的对应位置，避免顺序错乱
+        answers = [''] * len(questions)
 
         def answer_qa(i: int, q: str):
-            answer = toolLLM.add_user_msg(q).ask()
-            questions_with_answer.append(f'- {q}\n > **Answer**: {answer}')
+            toolLLM = ToolsLLM(ChatCompletionSettings(), tools, tools_map).add_system_msg(
+                qa_prompt.format(repo_doc=prefix_with(draft.markdown(), '> '),
+                                 modules_doc=prefix_with(modules_doc, '> ')))
+            answers[i] = toolLLM.add_user_msg(q).ask().strip()
             logger.info(f'[RepoMetric] answer question {i + 1}')
 
         TaskDispatcher(llm_thread_pool).adds(
             list(map(lambda args: Task(f=answer_qa, args=args), enumerate(questions)))).run()
-
-        qa_doc = '\n'.join(questions_with_answer)
         # 保存仓库文档QA-Answer
-        if ProjectSettings().is_debug():
-            with open(os.path.join(ctx.doc_path, 'repo-qa.md'), 'w') as f:
-                f.write(qa_doc)
-        prompt3 = repo_enhance_prompt.format(repo_doc=prefix_with(doc.markdown(), '> '), qa=prefix_with(qa_doc, '> '))
-        res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt3).ask()
+        with open(cls.get_qa_answer_filename(ctx), 'w') as f:
+            f.write('\n'.join(answers))
+        return answers
+
+
+    # 修正仓库文档
+    @classmethod
+    def _revise(cls, ctx: EvaContext, draft: RepoDoc, questions: List[str], answers: List[str]):
+        if ctx.load_repo_doc():
+            logger.info(f'[RepoMetric] load docs, repo doc exist')
+            return
+        qa_doc = '\n'.join(map(lambda i: f'- Q{i}: {questions[i]}\n > A{i}: {answers[i]}', range(len(questions))))
+        prompt = repo_enhance_prompt.format(repo_doc=prefix_with(draft.markdown(), '> '), qa=prefix_with(qa_doc, '> '))
+        res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         doc = RepoDoc.from_chapter(res)
         ctx.save_repo_doc(doc)
         logger.info(f'[RepoMetric] gen doc for repo, doc saved')
+        return doc
+
+
+    def eva(self, ctx):
+        if not self._check(ctx):
+            return
+        draft = self._draft(ctx)
+        questions = self._questions(ctx, draft)
+        answers = self._answer(ctx, draft, questions)
+        self._revise(ctx, draft, questions, answers)

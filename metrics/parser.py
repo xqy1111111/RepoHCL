@@ -13,6 +13,7 @@ from loguru import logger
 from utils import gen_sh
 from .metric import Metric, FuncDef, FieldDef, EvaContext, ClazzDef
 
+
 # 解析C/C++软件，获取函数调用图和类调用图
 class ClangParser(Metric):
 
@@ -190,7 +191,10 @@ class ClangParser(Metric):
             if edge.get_source() not in id_map or edge.get_destination() not in id_map:
                 continue
             callgraph.add_edge(id_map[edge.get_source()], id_map[edge.get_destination()])
+        return cls._remove_cycle(callgraph)
 
+    @classmethod
+    def _remove_cycle(cls, callgraph: nx.DiGraph):
         # 去除环，对于每个环，删除rank值最小的节点的入边
         rank = nx.pagerank(callgraph)
         while not nx.is_directed_acyclic_graph(callgraph):
@@ -232,7 +236,7 @@ class ClangParser(Metric):
                 if t in graph:
                     graph.add_edge(s, t)
             # TODO，描述类间的继承关系
-        return graph
+        return cls._remove_cycle(graph)
 
     # 调用clang解析软件
     @staticmethod
@@ -243,6 +247,7 @@ class ClangParser(Metric):
         # TODO windows当前不支持，下列命令行及gen_sh在windows下无法执行
         if sys.platform.startswith("win"):
             raise Exception("Windows is not supported")
+
         def cmd(command: str, path: str = resource_path):
             subprocess.run(command.replace('/', os.sep), shell=True, cwd=path.replace('/', os.sep))
             logger.info('[ClangParser] command executed: ' + command)
