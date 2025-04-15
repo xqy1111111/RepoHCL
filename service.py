@@ -10,9 +10,8 @@ from loguru import logger
 from pydantic import BaseModel
 
 from main import eva
-from metrics import EvaContext, ModuleDoc
-from metrics.doc import RepoDoc
-from utils import resolve_archive, prefix_with, SimpleLLM, ChatCompletionSettings
+from metrics import EvaContext, ModuleDoc, RepoDoc
+from utils import resolve_archive, prefix_with, SimpleLLM, ChatCompletionSettings, LangEnum
 
 app = FastAPI()
 
@@ -21,6 +20,7 @@ class RATask(BaseModel):
     id: str  # ID
     repo: str  # 仓库OSS地址
     callback: str  # 回调URL
+    language: str = LangEnum.cpp.render  # 语言
 
 
 class RAStatus(Enum):
@@ -57,6 +57,7 @@ def fetch_repo(repo: str) -> str:
 
 @app.post('/tools/hcl')
 async def hcl(req: RATask, background_tasks: BackgroundTasks) -> RAResult:
+    logger.info(f'hcl, req={req}')
     try:
         path = fetch_repo(req.repo)
         # path = 'md5'
@@ -99,11 +100,12 @@ def requests_with_retry(url: str, content: str, retry: int = 5):
 
 def run_with_response(path: str, req: RATask):
     try:
+        lang = LangEnum.from_render(req.language)
         ctx = EvaContext(doc_path=os.path.join('docs', path), resource_path=os.path.join('resource', path),
-                         output_path=os.path.join('output', path))
-        eva(ctx)
-        data = EvaResult(functions=list(map(lambda x: ctx.load_function_doc(x).model_dump(), ctx.function_map.keys())),
-                         classes=list(map(lambda x: ctx.load_clazz_doc(x).model_dump(), ctx.clazz_map.keys())),
+                         output_path=os.path.join('output', path), lang=lang)
+        eva(ctx, lang)
+        data = EvaResult(functions=list(map(lambda x: ctx.load_function_doc(x.symbol).model_dump(), filter(lambda x: x.visible, ctx.func_iter()))),
+                         classes=list(map(lambda x: ctx.load_clazz_doc(x.symbol).model_dump(), filter(lambda x: x.visible, ctx.clazz_iter()))),
                          modules=list(map(lambda x: x.model_dump(), ctx.load_module_docs())),
                          repo=[ctx.load_repo_doc().model_dump()])
 
@@ -187,7 +189,7 @@ Please Note:
         if len(ctx.repo):
             r = ctx.repo[0]
             r['features'] = list(map(lambda x: x.strip('- '), r['features'].splitlines()))
-            r['protocols'] = list(map(lambda x: x.strip('- '), r['protocols'].splitlines()))
+            r['standards'] = list(map(lambda x: x.strip('- '), r['standards'].splitlines()))
             r['scenarios'] = list(map(lambda x: x.strip('- '), r['scenarios'].splitlines()))
             s = RepoDoc.model_validate(r).markdown() + '\n'
         for m in ctx.modules:

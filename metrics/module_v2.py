@@ -12,7 +12,7 @@ from .metric import EvaContext
 
 modules_prompt = '''
 You are an expert in software architecture analysis. 
-Your task is to review function descriptions from a C++ code repository and organize them into one or more functional module based on their purpose and interrelations. 
+Your task is to review function descriptions from a code repository and organize them into one or more functional module based on their purpose and interrelations. 
 
 The following will provide you with the documentation of each function in the software in turn:
 {api_doc}
@@ -40,7 +40,7 @@ Please Note:
 
 modules_merge_prompt = '''
 You are an expert in software architecture analysis.
-You have reviewed the function descriptions from a C++ code repository and organized them into functional modules based on their purpose and interrelations.
+You have reviewed the function descriptions from a code repository and organized them into functional modules based on their purpose and interrelations.
 Now you need to merge the modules to make the documentation more concise and clear.
 
 The following are the documentation of the modules you have organized:
@@ -136,6 +136,8 @@ class ModuleV2Metric(ModuleMetric):
             module_doc=prefix_with('\n'.join(map(lambda x: x.markdown(), drafts)), '>'))
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask(lambda x: x.replace('---', '').strip())
         docs = ModuleDoc.from_doc(res)
+        # 保存模块文档初稿，若模块中只有一个函数，则舍弃
+        docs = list(filter(lambda x: len(docs) == 1 or len(x.functions) > 1, docs))
         for doc in docs:
             ctx.save_doc(cls.get_draft_filename(ctx), doc)
         logger.info(f'[ModuleV2Metric] merge modules: {len(drafts)} -> {len(docs)}')

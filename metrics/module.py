@@ -11,7 +11,7 @@ from .metric import Metric
 
 modules_summarize_prompt = '''
 You are an expert in software architecture analysis. 
-Your task is to review function descriptions from a C++ code repository and organize them into multiple functional modules based on their purpose and interrelations. 
+Your task is to review function descriptions from a code repository and organize them into multiple functional modules based on their purpose and interrelations. 
 You need to output a structured summary for each identified functional module.
 
 The standard format is in the Markdown reference paragraph below, and you shouldn't write the reference symbols `>` when you output:
@@ -41,7 +41,7 @@ Now a list of function descriptions are provided as follows, you can start worki
 
 modules_enhance_prompt = '''
 You are an expert in software architecture analysis. 
-Your task is to read the module documentation of a C++ project and improve it.
+Your task is to read the module documentation of a project and improve it.
 There are two key points for improvement:
 1. This module contains some functions, but these functions may not be appropriate, and you need to remove these functions.
 2. Design a usage scenario for this module. You need to mock a use case that combines as many functions as possible from the module to solve a specific problem in this scenario. The use case should be realistic and demonstrate the functionality of the module.'
@@ -55,7 +55,7 @@ The improved README should keep the same format as before. To ensure the same fo
 > - Function1
 > - Function2
 > #### Use Case
-> ```C++
+> ```{lang}
 > Mock possible usage examples of the Module with codes.
 > ```
 
@@ -105,7 +105,8 @@ class ModuleMetric(Metric):
         # 生成模块文档
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         modules = ModuleDoc.from_doc(res)
-        # 保存模块文档初稿
+        # 保存模块文档初稿，若模块中只有一个函数，则舍弃
+        modules = list(filter(lambda x: len(modules) == 1 or len(x.functions) > 1, modules))
         for m in modules:
             ctx.save_doc(cls.get_draft_filename(ctx), m)
         logger.info(f'[ModuleMetric] gen drafts for modules, modules count: {len(modules)}')
@@ -130,7 +131,7 @@ class ModuleMetric(Metric):
             functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')
             # 使用原模块文档组织上下文
             module_doc = prefix_with(m.markdown(), '> ')
-            prompt2 = modules_enhance_prompt.format(module_doc=module_doc, functions_doc=functions_doc)
+            prompt2 = modules_enhance_prompt.format(module_doc=module_doc, functions_doc=functions_doc, lang=ctx.lang.markdown)
             # 生成模块文档
             res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
             doc = ModuleDoc.from_chapter(res)

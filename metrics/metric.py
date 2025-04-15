@@ -5,6 +5,7 @@ from typing import List, TypeVar, Optional, Type, Iterator
 
 import networkx as nx
 
+from utils import LangEnum
 from .doc import ApiDoc, ClazzDoc, ModuleDoc, Doc, RepoDoc
 
 
@@ -45,6 +46,7 @@ class ClazzDef:
     fields: List[FieldDef]  # 类属性
     functions: List[FuncDef]  # 类方法
     filename: str  # 源代码文件名称
+    visible: bool = True  # 可见性，指是否对三方软件可见
 
     def __hash__(self):
         return hash(self.symbol)
@@ -63,6 +65,7 @@ class EvaContext:
     doc_path: str  # 文档存储路径
     resource_path: str  # 源代码路径
     output_path: str  # 中间产物存储路径
+    lang: LangEnum  # 语言类型
 
     # 软件的函数调用图，用法：
     # - ctx.func_iter(), callgraph.nodes(data=True) 遍历软件内所有函数
@@ -170,6 +173,7 @@ class EvaContext:
         if len(docs) == 0:
             return None
         return docs[0]
+
 
 # 度量指标的基类，接受EvaContext作为参数，将被其他指标依赖的度量结果写回EvaContext
 class Metric(metaclass=ABCMeta):

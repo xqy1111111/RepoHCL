@@ -42,12 +42,12 @@ class FunctionV2Metric(Metric):
                 filter(lambda s: s is not None,
                        map(lambda s: ctx.load_function_doc(s), callgraph.successors(symbol)))
             )
-            prompt = FunctionPromptBuilder().structure(ctx.structure).parameters(f.params).code(f.code).referenced(
-                referenced).file_path(f.filename).name(symbol).build()
+            prompt = _FunctionPromptBuilder().parameters(f.params).code(f.code).referenced(
+                referenced).lang(ctx.lang.markdown).name(symbol).build()
             res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
             res = f'### {symbol}\n' + res
             doc = ApiDoc.from_chapter(res)
-            doc.code = f'```C++\n{f.code}\n```'
+            doc.code = f'```{ctx.lang.markdown}\n{f.code}\n```'
             ctx.save_doc(cls.get_v2_draft_filename(ctx, f.filename), doc)
             logger.info(f'[FunctionV2Metric] parse {symbol}')
 
@@ -61,7 +61,7 @@ class FunctionV2Metric(Metric):
         # 生成文档
         def gen(symbol: str):
             if ctx.load_function_doc(symbol):
-                logger.info(f'[FunctionV2Metric] load {symbol}')
+                logger.info(f'[FunctionV2Metric] load revised {symbol}')
                 return
             f: FuncDef = ctx.func(symbol)
             referencer: List[ApiDoc] = list(
@@ -72,31 +72,39 @@ class FunctionV2Metric(Metric):
             if len(referencer) == 0:
                 ctx.save_function_doc(symbol, draft_doc)
                 return
+            # TODO，简化
             prompt = doc_revised_prompt.format(referencer=reduce(
                 lambda x, y: x + y,
                 map(lambda r: f'**Function**: `{r.name}`\n\n**Document**:\n\n{prefix_with(r.markdown(), "> ")}\n---\n',
                     referencer)),
+                lang = ctx.lang.markdown,
+                parameters = prefix_with(
+                    '#### Parameters\n'
+                    '- Parameter1: XXX\n'
+                    '- Parameter2: XXX\n'
+                    '- ...', '> ' if len(f.params) else '\n').strip(),
                 function_doc=prefix_with(draft_doc.markdown(), '> '))
-            res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
+            res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask(
+                lambda x: x[x.find('#### Description'):] # 去除标题
+            )
+            res = f'### {symbol}\n' + res
             doc: ApiDoc = ApiDoc.from_chapter(res)
-            doc.name = symbol
-            doc.code = f'```C++\n{f.code}\n```'
+            doc.code = f'```{ctx.lang.markdown}\n{f.code}\n```'
             ctx.save_function_doc(symbol, doc)
             logger.info(f'[FunctionV2Metric] revise {symbol}')
 
         TaskDispatcher(llm_thread_pool).map(nx.reverse(callgraph), gen).run()
 
-
+# Currently, you are in a project and the related hierarchical structure of this project is as follows:
+# {project_structure}
+# The path of the document you need to generate in this project is {file_path}.
 doc_generation_instruction = '''
 You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object.
 The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.
-Currently, you are in a project and the related hierarchical structure of this project is as follows:
-{project_structure}
-The path of the document you need to generate in this project is {file_path}.
 Now you need to generate a document for a Function, whose name is `{code_name}`.
 
 The code of the Function is as follows:
-```C++
+```{lang}
 {code}
 ```
 
@@ -105,13 +113,15 @@ The code of the Function is as follows:
 Please generate a detailed explanation document for this Function based on the code of the target Function itself and combine it with its calling situation in the project.
 Please write out the function of this Function briefly followed by a detailed analysis (including all details) to serve as the documentation for this part of the code.
 The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
+
 > #### Description
 > Briefly describe the Function in one sentence.
-{parameters}
+> #### Parameters
+> - Parameter1
 > #### Code Details
 > Detailed and CERTAIN code analysis of the Function. {details_supplement}
 > #### Example
-> ```C++
+> ```{lang}
 > Mock possible usage examples of the Function with codes. 
 > ```
 
@@ -132,8 +142,20 @@ As you can see, the Function is called by the following Functions, their docs an
 
 The previous documentation is written by a robot, and it may not be accurate or detailed enough. You should give it a major revision.
 There are some points you need to pay attention to:
-1. Ensure that the description is concise and accurate.
-2. Ensure that the Function is called correctly.
+1. Ensure that the Description is concise and accurate.
+2. Ensure that the Function is called correctly in Example.
+
+The improved README should keep the same format as before. To ensure the same format, you should follow the standard format in the Markdown reference paragraph below. You do not need to write the reference symbols `>` when you output:
+
+> #### Description
+> Briefly describe the Function in one sentence.
+{parameters}
+> #### Code Details
+> Detailed and CERTAIN code analysis of the Function. 
+> #### Example
+> ```{lang}
+> Mock possible usage examples of the Function with codes. 
+> ```
 
 Please note:
 - The improved documentation should keep the same format as before. That is, you should keep the headings in the documentation and only revise the content under each heading. 
@@ -143,19 +165,24 @@ Please note:
 '''
 
 
-class FunctionPromptBuilder:
+class _FunctionPromptBuilder:
     _prompt: str = doc_generation_instruction
 
-    def structure(self, structure: str):
-        self._prompt = self._prompt.replace('{project_structure}', structure)
-        return self
 
     def name(self, name: str):
         self._prompt = self._prompt.replace('{code_name}', name)
         return self
 
-    def file_path(self, file_path: str):
-        self._prompt = self._prompt.replace('{file_path}', file_path)
+    # def structure(self, structure: str):
+    #     self._prompt = self._prompt.replace('{project_structure}', structure)
+    #     return self
+    #
+    # def file_path(self, file_path: str):
+    #     self._prompt = self._prompt.replace('{file_path}', file_path)
+    #     return self
+
+    def lang(self, lang: str):
+        self._prompt = self._prompt.replace('{lang}', lang)
         return self
 
     def referenced(self, referenced: List[ApiDoc]):
@@ -182,7 +209,7 @@ class FunctionPromptBuilder:
                 '- Parameter2: XXX\n'
                 '- ...', '> ').strip())
         else:
-            self._prompt = self._prompt.replace('{parameters}', '')
+            self._prompt = self._prompt.replace('{parameters}', '>\n')
         return self
 
     def code(self, code: str):

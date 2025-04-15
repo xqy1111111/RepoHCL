@@ -11,7 +11,7 @@ from .doc import RepoDoc
 from .metric import Metric
 
 repo_summarize_prompt = '''
-You are a senior software engineer. You have developed a C/C++ software. 
+You are a senior software engineer. You have developed a {lang} software. 
 Now you need to write a Github README.md for it to help users understand your software.
 
 The standard format is in the Markdown reference paragraph below, and you do not need to write the reference symbols `>` when you output:
@@ -40,7 +40,7 @@ Here is the documentation of main modules of your software. You should refer it 
 questions_prompt = '''
 You are a senior software engineer.
 
-Your aim is to improve a C/C++ software you developed.
+Your aim is to improve a {lang} software you developed.
 In order to find room for improvement in the software, you decide to refer to the focus of excellent software and design some questions to help you improve the software.
 
 The summary of your software is as follows:
@@ -90,7 +90,7 @@ Please Note:
 
 repo_enhance_prompt = '''
 You are an expert in software. 
-Your task is to read the README documentation of a C++ project and improve it.
+Your task is to read the README documentation of a {lang} project and improve it.
 
 The README is as follows:
 
@@ -160,7 +160,7 @@ class RepoMetric(Metric):
         # 使用模块文档组织上下文
         modules = ctx.load_module_docs()
         modules_doc = '\n\n---\n\n'.join(map(lambda m: m.markdown(), modules))
-        prompt = repo_summarize_prompt.format(modules_doc=prefix_with(modules_doc, '> '))
+        prompt = repo_summarize_prompt.format(modules_doc=prefix_with(modules_doc, '> '), lang=ctx.lang.markdown)
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         doc = RepoDoc.from_chapter(res)
         # 保存仓库文档初稿
@@ -177,7 +177,7 @@ class RepoMetric(Metric):
             with open(cls.get_qa_filename(ctx), 'r') as f:
                 questions = f.readlines()
                 return list(map(lambda x: x.strip(), questions))
-        prompt = questions_prompt.format(repo_doc=draft.markdown())
+        prompt = questions_prompt.format(repo_doc=draft.markdown(), lang=ctx.lang.markdown)
         questions_doc = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         question_pattern = re.compile(r'- Q\d+: (.*?)\n- A\d+: (.*?)(?=\n|\Z)', re.DOTALL)
         questions = list(
@@ -261,7 +261,7 @@ class RepoMetric(Metric):
             logger.info(f'[RepoMetric] load docs, repo doc exist')
             return
         qa_doc = '\n'.join(map(lambda i: f'- Q{i}: {questions[i]}\n > A{i}: {answers[i]}', range(len(questions))))
-        prompt = repo_enhance_prompt.format(repo_doc=prefix_with(draft.markdown(), '> '), qa=prefix_with(qa_doc, '> '))
+        prompt = repo_enhance_prompt.format(repo_doc=prefix_with(draft.markdown(), '> '), qa=prefix_with(qa_doc, '> '), lang=ctx.lang.markdown)
         res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
         doc = RepoDoc.from_chapter(res)
         ctx.save_repo_doc(doc)

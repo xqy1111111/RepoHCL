@@ -3,7 +3,9 @@ import shutil
 
 import click
 
-from metrics import EvaContext, ClangParser, FunctionMetric, StructureMetric, ClazzMetric, ModuleMetric, RepoV2Metric
+from metrics import EvaContext, ClangParser, FunctionMetric, ClazzMetric, ModuleMetric, RepoV2Metric, \
+    PyParser
+from utils.common import LangEnum
 
 
 def response_with_gitbook(doc_path: str):
@@ -31,18 +33,23 @@ def response_with_gitbook(doc_path: str):
         f.write(f'### {os.path.basename(doc_path)}\n')
 
 
+
+
 @click.command()
 @click.argument('path', type=click.Path(exists=True))
-def main(path):
+@click.option('--lang', default=LangEnum.cpp.cli,
+              type=click.Choice([LangEnum.python.cli, LangEnum.cpp.cli], case_sensitive=False),
+              help='编程语言')
+def main(path, lang):
     path = click.format_filename(path).strip(os.sep)
     basename = os.path.basename(path)
     # 移动到工作路径
     shutil.copytree(path, os.path.join('resource', basename), dirs_exist_ok=True)
     # 初始化上下文
     ctx = EvaContext(doc_path=os.path.join('docs', basename), resource_path=os.path.join('resource', basename),
-                     output_path=os.path.join('output', basename))
+                     output_path=os.path.join('output', basename), lang=lang)
     # 开始运行
-    eva(ctx)
+    eva(ctx, LangEnum.from_cli(lang))
     # 生成gitbook输出
     response_with_gitbook(os.path.join('docs', basename))
     # 清扫工作路径
@@ -50,11 +57,16 @@ def main(path):
     shutil.rmtree(os.path.join('output', basename))
 
 
-def eva(ctx: EvaContext):
+def eva(ctx: EvaContext, lang: LangEnum):
     # 生成函数列表、类列表、函数调用图、类调用图
-    ClangParser().eva(ctx)
-    # 生成软件目录结构
-    StructureMetric().eva(ctx)
+    if lang == LangEnum.cpp:
+        ClangParser().eva(ctx)
+    elif lang == LangEnum.python:
+        PyParser().eva(ctx)
+    else:
+        raise NotImplementedError(f'{lang} not supported')
+    # 生成软件目录结构，TODO：暂时不用了
+    # StructureMetric().eva(ctx)
     # 生成函数文档
     FunctionMetric().eva(ctx)
     # 生成类文档

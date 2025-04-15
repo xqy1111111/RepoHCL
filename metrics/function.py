@@ -35,8 +35,8 @@ class FunctionMetric(Metric):
                 filter(lambda s: s is not None,
                        map(lambda s: ctx.load_function_doc(s), callgraph.predecessors(symbol)))
             )
-            prompt = FunctionPromptBuilder().structure(ctx.structure).parameters(f.params).code(f.code).referencer(
-                referencer).referenced(referenced).file_path(f.filename).name(symbol).build()
+            prompt = _FunctionPromptBuilder().parameters(f.params).code(f.code).referencer(
+                referencer).referenced(referenced).lang(ctx.lang.markdown).name(symbol).build()
             res = SimpleLLM(ChatCompletionSettings()).add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
             res = f'### {symbol}\n' + res
             doc = ApiDoc.from_chapter(res)
@@ -49,13 +49,10 @@ class FunctionMetric(Metric):
 doc_generation_instruction = '''
 You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object.
 The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.
-Currently, you are in a project and the related hierarchical structure of this project is as follows:
-{project_structure}
-The path of the document you need to generate in this project is {file_path}.
 Now you need to generate a document for a Function, whose name is `{code_name}`.
 
 The code of the Function is as follows:
-```C++
+```{lang}
 {code}
 ```
 
@@ -71,7 +68,7 @@ The standard format is in the Markdown reference paragraph below, and you do not
 > #### Code Details
 > Detailed and CERTAIN code analysis of the Function. {has_relationship}
 > #### Example
-> ```C++
+> ```{lang}
 > Mock possible usage examples of the Function with codes. {example}
 > ```
 Please note:
@@ -80,22 +77,26 @@ Please note:
 '''
 
 
-class FunctionPromptBuilder:
+class _FunctionPromptBuilder:
     _prompt: str = doc_generation_instruction
 
     _tag_referenced = False
     _tag_referencer = False
 
-    def structure(self, structure: str):
-        self._prompt = self._prompt.replace('{project_structure}', structure)
-        return self
-
     def name(self, name: str):
         self._prompt = self._prompt.replace('{code_name}', name)
         return self
 
-    def file_path(self, file_path: str):
-        self._prompt = self._prompt.replace('{file_path}', file_path)
+    # def structure(self, structure: str):
+    #     self._prompt = self._prompt.replace('{project_structure}', structure)
+    #     return self
+    #
+    # def file_path(self, file_path: str):
+    #     self._prompt = self._prompt.replace('{file_path}', file_path)
+    #     return self
+
+    def lang(self, lang: str):
+        self._prompt = self._prompt.replace('{lang}', lang)
         return self
 
     def referenced(self, referenced: List[ApiDoc]):

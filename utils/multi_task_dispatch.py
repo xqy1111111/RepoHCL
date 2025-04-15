@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import uuid
 from collections import deque, defaultdict
 from concurrent.futures import as_completed
@@ -27,6 +28,9 @@ class Task:
         if not isinstance(other, Task):
             return False
         return self.id == other.id
+
+    def __repr__(self):
+        return f'Task({self.f.__name__}, {self.args})'
 
 
 # 任务调度器，将一组任务按照依赖关系分组，并行执行
@@ -64,7 +68,6 @@ class TaskDispatcher:
         # 检查是否有环
         if not nx.is_directed_acyclic_graph(self._tasks):
             raise ValueError("Graph is not acyclic")
-
         groups = reverse_topo(self._tasks)
         logger.debug(f'[TaskDispatcher] split {len(self._tasks)} tasks into {len(groups)} groups')
         for i, g in enumerate(groups):

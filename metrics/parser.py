@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json
 import os
 import re
@@ -10,7 +11,7 @@ import networkx as nx
 import pydot
 from loguru import logger
 
-from utils import gen_sh
+from utils import gen_sh, remove_cycle
 from .metric import Metric, FuncDef, FieldDef, EvaContext, ClazzDef
 
 
@@ -117,7 +118,8 @@ class ClangParser(Metric):
                                                      access=x.get('access')), v.get('fields')))
                 # C++类，文件中关联了函数
                 if 'functions' in v:
-                    clazz_functions = list(map(lambda x: callgraph.nodes[x]['attr'], v.get('functions')))
+                    clazz_functions = list(map(lambda x: callgraph.nodes[x]['attr'],
+                                               filter(lambda x: x in callgraph.nodes, v.get('functions'))))
                 else:
                     # Struct,需要手动找到关联函数
                     clazz_functions = cls._find_related_functions(s, callgraph, typedefs)
@@ -191,19 +193,7 @@ class ClangParser(Metric):
             if edge.get_source() not in id_map or edge.get_destination() not in id_map:
                 continue
             callgraph.add_edge(id_map[edge.get_source()], id_map[edge.get_destination()])
-        return cls._remove_cycle(callgraph)
-
-    @classmethod
-    def _remove_cycle(cls, callgraph: nx.DiGraph):
-        # 去除环，对于每个环，删除rank值最小的节点的入边
-        rank = nx.pagerank(callgraph)
-        while not nx.is_directed_acyclic_graph(callgraph):
-            cycle = list(nx.find_cycle(callgraph))
-            edge_to_remove = min(cycle, key=lambda x: rank[x[1]])
-            callgraph.remove_edge(*edge_to_remove)
-            logger.debug(f'[ClangParser] remove {edge_to_remove}')
-
-        return callgraph
+        return remove_cycle(callgraph)
 
     def eva(self, ctx: EvaContext):
         self._prepare(ctx.output_path, ctx.resource_path)
@@ -236,7 +226,7 @@ class ClangParser(Metric):
                 if t in graph:
                     graph.add_edge(s, t)
             # TODO，描述类间的继承关系
-        return cls._remove_cycle(graph)
+        return remove_cycle(graph)
 
     # 调用clang解析软件
     @staticmethod

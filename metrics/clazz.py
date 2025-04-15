@@ -28,8 +28,8 @@ class ClazzMetric(Metric):
                 filter(lambda s: s is not None,
                        map(lambda s: ctx.load_function_doc(s.symbol), c.functions))
             )
-            prompt = ClazzPromptBuilder().structure(ctx.structure).attributes(c.fields).code(c.code).functions(
-                functions).referenced(referenced).file_path(c.filename).name(symbol).build()
+            prompt = ClazzPromptBuilder().attributes(c.fields).code(c.code).functions(
+                functions).referenced(referenced).lang(ctx.lang.markdown).name(symbol).build()
             llm = SimpleLLM(ChatCompletionSettings())
             res = llm.add_system_msg(prompt).add_user_msg(documentation_guideline).ask()
             res = f'### {symbol}\n' + res
@@ -43,12 +43,9 @@ class ClazzMetric(Metric):
 doc_generation_instruction = (
     "You are an AI documentation assistant, and your task is to generate documentation based on the given code of an object. "
     "The purpose of the documentation is to help developers and beginners understand the function and specific usage of the code.\n\n"
-    "Currently, you are in a project and the related hierarchical structure of this project is as follows\n"
-    "{project_structure}\n\n"
-    "The path of the document you need to generate in this project is {file_path}.\n"
     'Now you need to generate a document for a Class, whose name is `{code_name}`.\n\n'
     "The code of the Class is as follows:\n\n"
-    "```C++\n"
+    "```{lang}\n"
     "{code}\n"
     "```\n\n"
     "{functions}\n"
@@ -72,16 +69,20 @@ class ClazzPromptBuilder:
     _tag_referenced = False
     _tag_functions = False
 
-    def structure(self, structure: str):
-        self._prompt = self._prompt.replace('{project_structure}', structure)
-        return self
-
     def name(self, name: str):
         self._prompt = self._prompt.replace('{code_name}', name)
         return self
 
-    def file_path(self, file_path: str):
-        self._prompt = self._prompt.replace('{file_path}', file_path)
+    # def structure(self, structure: str):
+    #     self._prompt = self._prompt.replace('{project_structure}', structure)
+    #     return self
+    #
+    # def file_path(self, file_path: str):
+    #     self._prompt = self._prompt.replace('{file_path}', file_path)
+    #     return self
+
+    def lang(self, lang: str):
+        self._prompt = self._prompt.replace('{lang}', lang)
         return self
 
     def referenced(self, referenced: List[ClazzDoc]):

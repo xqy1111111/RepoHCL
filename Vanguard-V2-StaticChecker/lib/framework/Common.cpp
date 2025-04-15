@@ -1026,7 +1026,7 @@ std::string getPrettyName(FunctionDecl *FD) {
         Result += getTypeSpelling(ParamTy, Context);
 
         // 添加空格后跟参数名称
-        Result += " " + Param->getNameAsString();
+//        Result += " " + Param->getNameAsString();
 
         if (i < e - 1) { // 如果不是最后一个参数，则添加逗号和空格
             Result += ", ";
