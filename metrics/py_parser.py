@@ -1,13 +1,13 @@
-import ast
-import logging
-import os
-import symtable
-from glob import glob
-from typing import Union
+import ast  # 导入ast模块，用于Python抽象语法树的解析和操作
+import logging  # 导入logging模块，用于日志记录
+import os  # 导入os模块，用于操作系统相关功能
+import symtable  # 导入symtable模块，用于访问Python符号表
+from glob import glob  # 导入glob函数，用于文件路径模式匹配
+from typing import Union  # 导入Union类型，用于类型注解中的联合类型
 
-import networkx as nx
-from loguru import logger
-from pyan.anutils import (
+import networkx as nx  # 导入networkx库，用于处理和分析图结构
+from loguru import logger  # 导入loguru库的logger，用于日志记录
+from pyan.anutils import (  # 导入pyan工具中的辅助函数
     ExecuteInInnerScope,
     Scope,
     UnresolvedSuperCallError,
@@ -17,10 +17,10 @@ from pyan.anutils import (
     sanitize_exprs,
     tail,
 )
-from pyan.node import Flavor, Node
+from pyan.node import Flavor, Node  # 导入pyan工具中的节点相关类
 
-from .metric import Metric, EvaContext, FuncDef
-from utils import remove_cycle
+from .metric import Metric, EvaContext, FuncDef  # 导入度量相关类
+from utils import remove_cycle  # 导入工具函数，用于去除图中的循环依赖
 
 
 # 解析Python软件，获取函数调用图和类调用图
@@ -28,17 +28,53 @@ from utils import remove_cycle
 # TODO: 理解IMPORT似乎有问题
 # TODO: 未支持类调用图
 class PyParser(Metric):
+    """Python代码解析器
+    
+    负责解析Python源代码，提取函数调用关系和类结构信息
+    生成函数调用图和类调用图，用于后续分析
+    """
 
     @classmethod
     def _is_func(cls, node: Node) -> bool:
+        """判断一个节点是否为函数定义节点
+        
+        Args:
+            node: 要检查的节点
+            
+        Returns:
+            布尔值，表示该节点是否为函数定义节点
+        """
         return isinstance(node.ast_node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.defined
 
     @classmethod
     def _get_func_def(cls, node: Node, v, root: str) -> FuncDef:
+        """从节点创建函数定义对象
+        
+        从AST节点中提取函数的信息，包括函数名、源代码、可见性等
+        
+        Args:
+            node: 函数节点
+            v: 调用图访问器对象
+            root: 项目根目录路径
+            
+        Returns:
+            FuncDef对象，包含函数的完整信息
+        """
         def get_source_from_ast_node(node, file):
-            start = node.lineno - 1, node.col_offset
-            end = node.end_lineno - 1, node.end_col_offset
-            lines = open(file, 'r').readlines()
+            """从AST节点提取源代码
+            
+            根据节点的行号和列号从源文件中提取对应的代码片段
+            
+            Args:
+                node: AST节点
+                file: 源文件路径
+                
+            Returns:
+                提取的源代码字符串
+            """
+            start = node.lineno - 1, node.col_offset  # 开始位置（行号，列号）
+            end = node.end_lineno - 1, node.end_col_offset  # 结束位置（行号，列号）
+            lines = open(file, 'r').readlines()  # 读取源文件的所有行
             if start[0] == end[0]:
                 # 如果开始和结束在同一行，直接切片
                 return lines[start[0]][start[1]:end[1]]
@@ -62,12 +98,22 @@ class PyParser(Metric):
                        visible=visible, access='public' if visible else 'private')
 
     def eva(self, ctx: EvaContext):
+        """执行Python代码解析和分析
+        
+        解析Python源代码，生成函数调用图和类调用图
+        
+        Args:
+            ctx: 评估上下文对象，包含输入输出路径和结果存储
+        """
+        # 创建调用图访问器，递归查找所有Python文件
         v = CallGraphVisitor([fn2 for fn in [f'{ctx.resource_path}/**/*.py'] for fn2 in glob(fn, recursive=True)])
-        g = nx.DiGraph()
+        g = nx.DiGraph()  # 创建有向图对象
+        # 添加所有函数节点到图中
         for ns in list(v.nodes.values()):
             for n in ns:
                 if self._is_func(n):
                     g.add_node(n.get_name(), attr=self._get_func_def(n, v, ctx.resource_path))
+        # 添加所有函数调用关系（边）到图中
         for s, ts in v.uses_edges.items():
             if not self._is_func(s):
                 continue
@@ -78,25 +124,33 @@ class PyParser(Metric):
                     if t.get_name() not in g.nodes:
                         g.add_node(t.get_name(), attr=self._get_func_def(t, v, ctx.resource_path))
                     g.add_edge(s.get_name(), t.get_name())
-        ctx.callgraph = remove_cycle(g)
-        # TODO
+        ctx.callgraph = remove_cycle(g)  # 去除图中的循环依赖
+        # TODO: 实现类调用图
         ctx.clazz_callgraph = nx.DiGraph()
         logger.info(f'[PyParser] callgraph size: {len(ctx.callgraph.nodes)}, {len(ctx.callgraph.edges)}')
 
 
 def get_module_name(filename, root: str = None):
-    """Try to determine the full module name of a source file, by figuring out
-    if its directory looks like a package (i.e. has an __init__.py file or
-    there is a .py file in it )."""
+    """尝试确定源文件的完整模块名称
+    
+    通过检查目录结构判断其是否为Python包（是否有__init__.py文件）
+    
+    Args:
+        filename: 源文件路径
+        root: 项目根目录路径，可选
+        
+    Returns:
+        字符串，表示源文件的完整模块名称
+    """
 
     if os.path.basename(filename) == "__init__.py":
-        # init file means module name is directory name
+        # init文件意味着模块名是目录名
         module_path = os.path.dirname(filename)
     else:
-        # otherwise it is the filename without extension
+        # 否则是不带扩展名的文件名
         module_path = filename.replace(".py", "")
 
-    # find the module root - walk up the tree and check if it contains .py files - if yes. it is the new root
+    # 查找模块根目录 - 向上遍历目录树，检查是否包含.py文件
     directories = [(module_path, True)]
     if root is None:
         while directories[0][0] != os.path.dirname(directories[0][0]):
@@ -106,11 +160,11 @@ def get_module_name(filename, root: str = None):
             is_root = any([f == "__init__.py" for f in os.listdir(potential_root)])
             directories.insert(0, (potential_root, is_root))
 
-        # keep directories where itself of parent is root
+        # 保留自身或父目录是根目录的目录
         while not directories[0][1]:
             directories.pop(0)
 
-    else:  # root is already known - just walk up until it is matched
+    else:  # 根目录已知 - 向上遍历直到匹配
         while directories[0][0] != root:
             potential_root = os.path.dirname(directories[0][0])
             directories.insert(0, (potential_root, True))
@@ -142,59 +196,74 @@ def get_module_name(filename, root: str = None):
 
 
 class CallGraphVisitor(ast.NodeVisitor):
-    """A visitor that can be walked over a Python AST, and will derive
-    information about the objects in the AST and how they use each other.
-
-    A single CallGraphVisitor object can be run over several ASTs (from a
-    set of source files).  The resulting information is the aggregate from
-    all files.  This way use information between objects in different files
-    can be gathered."""
+    """调用图访问器
+    
+    这个类继承了ast.NodeVisitor，可以遍历Python抽象语法树(AST)，
+    收集代码中的对象信息及其之间的使用关系。
+    
+    一个CallGraphVisitor对象可以处理多个AST（来自一组源文件），
+    收集的信息是所有文件的聚合结果，这样可以获取不同文件间对象的使用信息。
+    """
 
     def __init__(self, filenames, root: str = None, logger=None):
-        self.logger = logger or logging.getLogger(__name__)
+        """初始化调用图访问器
+        
+        Args:
+            filenames: 要分析的文件路径列表
+            root: 项目根目录路径，可选
+            logger: 日志记录器对象，可选
+        """
+        self.logger = logger or logging.getLogger(__name__)  # 设置日志记录器
 
-        # full module names for all given files
-        self.module_to_filename = {}  # inverse mapping for recording which file each AST node came from
+        # 所有给定文件的完整模块名
+        self.module_to_filename = {}  # 模块名到文件路径的映射，用于记录每个AST节点来自哪个文件
         for filename in filenames:
             mod_name = get_module_name(filename)
             self.module_to_filename[mod_name] = filename
         self.filenames = filenames
         self.root = root
 
-        # data gathered from analysis
-        self.defines_edges = {}
-        self.uses_edges = {}
-        self.nodes = {}  # Node name: list of Node objects (in possibly different namespaces)
-        self.scopes = {}  # fully qualified name of namespace: Scope object
+        # 从分析中收集的数据
+        self.defines_edges = {}  # 定义关系边
+        self.uses_edges = {}  # 使用关系边
+        self.nodes = {}  # 节点名称: 节点对象列表（可能在不同命名空间中）
+        self.scopes = {}  # 命名空间的完全限定名: Scope对象
 
-        self.class_base_ast_nodes = {}  # pass 1: class Node: list of AST nodes
-        self.class_base_nodes = {}  # pass 2: class Node: list of Node objects (local bases, no recursion)
-        self.mro = {}  # pass 2: class Node: list of Node objects in Python's MRO order
+        self.class_base_ast_nodes = {}  # 第1遍: 类节点: AST节点列表
+        self.class_base_nodes = {}  # 第2遍: 类节点: 节点对象列表（本地基类，无递归）
+        self.mro = {}  # 第2遍: 类节点: 按Python的MRO顺序排列的节点对象列表
 
-        # current context for analysis
-        self.module_name = None
-        self.filename = None
-        self.name_stack = []  # for building namespace name, node naming
-        self.scope_stack = []  # the Scope objects currently in scope
-        self.class_stack = []  # Nodes for class definitions currently in scope
-        self.context_stack = []  # for detecting which FunctionDefs are methods
-        self.last_value = None
+        # 当前分析上下文
+        self.module_name = None  # 当前模块名
+        self.filename = None  # 当前文件名
+        self.name_stack = []  # 用于构建命名空间名称和节点命名
+        self.scope_stack = []  # 当前作用域中的Scope对象
+        self.class_stack = []  # 当前作用域中的类定义节点
+        self.context_stack = []  # 用于检测哪些FunctionDef是方法
+        self.last_value = None  # 上一个计算的值
 
-        # Analyze.
+        # 执行分析
         self.process()
 
     def process(self):
-        """Analyze the set of files, twice so that any forward-references are picked up."""
-        for pas in range(2):
+        """分析文件集，执行两遍以便捕获所有前向引用"""
+        for pas in range(2):  # 进行两遍分析
             for filename in self.filenames:
                 self.logger.info("========== pass %d, file '%s' ==========" % (pas + 1, filename))
-                self.process_one(filename)
+                self.process_one(filename)  # 处理单个文件
             if pas == 0:
-                self.resolve_base_classes()  # must be done only after all files seen
-        self.postprocess()
+                self.resolve_base_classes()  # 第一遍后解析基类，必须在所有文件都分析后进行
+        self.postprocess()  # 完成分析后的后处理
 
     def process_one(self, filename):
-        """Analyze the specified Python source file."""
+        """分析指定的Python源文件
+        
+        Args:
+            filename: 要分析的Python源文件路径
+            
+        Raises:
+            ValueError: 如果文件名未在初始化时提供
+        """
         if filename not in self.filenames:
             raise ValueError(
                 "Filename '%s' has not been preprocessed (was not given to __init__, which got %s)"
@@ -204,30 +273,30 @@ class CallGraphVisitor(ast.NodeVisitor):
             content = f.read()
         self.filename = filename
         self.module_name = get_module_name(filename, root=self.root)
-        self.analyze_scopes(content, filename)  # add to the currently known scopes
-        self.visit(ast.parse(content, filename))
+        self.analyze_scopes(content, filename)  # 分析作用域，添加到已知作用域
+        self.visit(ast.parse(content, filename))  # 访问解析后的AST
         self.module_name = None
         self.filename = None
 
     def resolve_base_classes(self):
-        """Resolve base classes from AST nodes to Nodes.
-
-        Run this between pass 1 and pass 2 to pick up inherited methods.
-        Currently, this can parse ast.Names and ast.Attributes as bases.
+        """将基类从AST节点解析为Node对象
+        
+        在第1遍和第2遍之间运行，以捕获继承的方法。
+        目前，这可以解析ast.Names和ast.Attributes作为基类。
         """
         self.logger.debug("Resolving base classes")
-        assert len(self.scope_stack) == 0  # only allowed between passes
-        for node in self.class_base_ast_nodes:  # Node: list of AST nodes
+        assert len(self.scope_stack) == 0  # 只允许在两遍之间调用
+        for node in self.class_base_ast_nodes:  # Node: AST节点列表
             self.class_base_nodes[node] = []
             for ast_node in self.class_base_ast_nodes[node]:
-                # perform the lookup in the scope enclosing the class definition
+                # 在封闭类定义的作用域中执行查找
                 self.scope_stack.append(self.scopes[node.namespace])
 
                 if isinstance(ast_node, ast.Name):
                     baseclass_node = self.get_value(ast_node.id)
                 elif isinstance(ast_node, ast.Attribute):
-                    _, baseclass_node = self.get_attribute(ast_node)  # don't care about obj, just grab attr
-                else:  # give up
+                    _, baseclass_node = self.get_attribute(ast_node)  # 不关心obj，只获取attr
+                else:  # 放弃
                     baseclass_node = None
 
                 self.scope_stack.pop()
@@ -242,7 +311,15 @@ class CallGraphVisitor(ast.NodeVisitor):
         self.logger.debug("Method resolution order (MRO) for all analyzed classes: %s" % self.mro)
 
     def postprocess(self):
-        """Finalize the analysis."""
+        """完成分析的后处理
+        
+        与原始Pyan相比，expand_unknowns()和contract_nonexistents()的顺序已交换。
+        原始想法似乎是先将未解析但已知名称的使用转换为通配符，
+        然后在通配符扩展后清理不存在的Node。
+        
+        现在，我们首先收缩不存在的Node，然后再扩展通配符。这样似乎更合理，
+        避免处理过多无用的通配符。
+        """
 
         # Compared to the original Pyan, the ordering of expand_unknowns() and
         # contract_nonexistents() has been switched.

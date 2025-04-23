@@ -1,14 +1,18 @@
 ## RepoHCL
-借助LLM理解C/C++项目，为项目中的每个源代码文件生成文档
+
+借助 LLM 理解 C/C++项目，为项目中的每个源代码文件生成文档
 
 ### 工作流程
-- 为C/C++项目生成AST
-- 基于AST解析源代码文件中包含的类与函数，并生成Function/Class CallGraph
-- 按Function CallGraph的逆拓扑排序，为各个函数生成文档
-- 按Class CallGraph的逆拓扑排序，为各个类生成文档
+
+- 为 C/C++项目生成 AST
+- 基于 AST 解析源代码文件中包含的类与函数，并生成 Function/Class CallGraph
+- 按 Function CallGraph 的逆拓扑排序，为各个函数生成文档
+- 按 Class CallGraph 的逆拓扑排序，为各个类生成文档
 - 基于函数文档生成模块文档
 - 基于模块文档生成仓库文档
+
 ### 项目结构
+
 ```
 ├── docker                      # docker封装的项目demo
 │    ├── cmd.dockerfile         # main.py的docker运行环境，命令行执行工具
@@ -44,15 +48,18 @@
 ├── main.py                     # 命令行入口
 ├── service.py                  # web服务入口
 ├── requirements.txt            # Python依赖管理
-└── README.md                  
+└── README.md
 ```
+
 ### 使用说明
-- 项目基于OpenAI协议调用LLM，需在.env中设置调用的LLM服务的域名`OPENAI_BASE_URL`、模型`MODEL`、温度`MODEL_TEMPERATURE`、输出语言`MODEL_LANGUAGE`，并配置`OPENAI_API_KEY`作为密钥。默认采用阿里百炼的qwen-plus。
-- 目前提供了docker/cmd.dockerfile，可以对测试项目md5进行一次完整的分析。本地运行依赖可参考该dockerfile。
-- RepoMetricV2使用到HuggingFace拉取远端模型，若网络不佳，可在.env中设置`HF_ENDPOINT=https://hf-mirror.com`。
-- 由于不同C/C++项目的编译方式不同，目前需要根据项目特征手动设置合适的命令以生成AST。
-- 在.env中设置`LOG_LEVEL`可以控制日志的输出级别，默认`DEBUG`级别。
+
+- 项目基于 OpenAI 协议调用 LLM，需在.env 中设置调用的 LLM 服务的域名`OPENAI_BASE_URL`、模型`MODEL`、温度`MODEL_TEMPERATURE`、输出语言`MODEL_LANGUAGE`，并配置`OPENAI_API_KEY`作为密钥。默认采用阿里百炼的 qwen-plus。
+- 目前提供了 docker/cmd.dockerfile，可以对测试项目 md5 进行一次完整的分析。本地运行依赖可参考该 dockerfile。
+- RepoMetricV2 使用到 HuggingFace 拉取远端模型，若网络不佳，可在.env 中设置`HF_ENDPOINT=https://hf-mirror.com`。
+- 由于不同 C/C++项目的编译方式不同，目前需要根据项目特征手动设置合适的命令以生成 AST。
+- 在.env 中设置`LOG_LEVEL`可以控制日志的输出级别，默认`DEBUG`级别。
 
 ### TODO
+
 - 提高文档质量，增加对生成结果准确性的评估
 - 增加对其他语言的支持：RUST、Java、JavaScript

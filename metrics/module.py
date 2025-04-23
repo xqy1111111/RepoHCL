@@ -1,13 +1,13 @@
-import os.path
-from functools import reduce
-from typing import List
+import os.path  # 导入os.path模块，用于处理文件路径
+from functools import reduce  # 导入reduce函数，用于对序列进行累积操作
+from typing import List  # 导入List类型提示
 
-from loguru import logger
+from loguru import logger  # 导入日志记录工具
 
-from utils import SimpleLLM, prefix_with, ChatCompletionSettings, TaskDispatcher, llm_thread_pool, Task
-from . import EvaContext
-from .doc import ModuleDoc
-from .metric import Metric
+from utils import SimpleLLM, prefix_with, ChatCompletionSettings, TaskDispatcher, llm_thread_pool, Task  # 导入LLM和任务分发相关工具
+from . import EvaContext  # 导入评估上下文
+from .doc import ModuleDoc  # 导入模块文档类
+from .metric import Metric  # 导入度量基类
 
 modules_summarize_prompt = '''
 You are an expert in software architecture analysis. 
@@ -37,7 +37,7 @@ Please Note:
 
 Now a list of function descriptions are provided as follows, you can start working.
 {api_docs}
-'''
+'''  # 模块总结提示模板，指导LLM如何根据函数列表生成模块概要
 
 modules_enhance_prompt = '''
 You are an expert in software architecture analysis. 
@@ -80,78 +80,132 @@ Here is the documentation of the module you need to enhance:
 Here is the documentation of the functions referenced in the module:
 
 {functions_doc}
-'''
+'''  # 模块增强提示模板，指导LLM如何优化模块文档并添加用例
 
 
 # 为模块生成文档
 class ModuleMetric(Metric):
+    """
+    模块度量类，用于根据函数文档生成模块文档
+    
+    继承自Metric抽象基类，实现了eva方法和一系列辅助方法
+    """
 
     @classmethod
     def get_draft_filename(cls, ctx):
-        return os.path.join(ctx.doc_path, 'modules.v1_draft.md')
+        """
+        获取模块草稿文件名
+        
+        Args:
+            ctx: 评估上下文对象
+            
+        Returns:
+            模块草稿文件的完整路径
+        """
+        return os.path.join(ctx.doc_path, 'modules.v1_draft.md')  # 返回草稿文件路径
 
     @classmethod
     def _draft(cls, ctx) -> List[ModuleDoc]:
-        existed_draft_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)
-        if len(existed_draft_doc):
-            logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_draft_doc)}')
-            return existed_draft_doc
+        """
+        生成模块文档草稿
+        
+        首先尝试加载已有草稿，如果没有则根据函数文档生成新的模块草稿
+        
+        Args:
+            ctx: 评估上下文对象
+            
+        Returns:
+            模块文档草稿列表
+        """
+        existed_draft_doc = ctx.load_docs(cls.get_draft_filename(ctx), ModuleDoc)  # 尝试加载已有草稿
+        if len(existed_draft_doc):  # 如果存在草稿
+            logger.info(f'[ModuleMetric] load drafts, modules count: {len(existed_draft_doc)}')  # 记录加载信息
+            return existed_draft_doc  # 返回已有草稿
         # 提取所有用户可见的函数
-        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
+        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))  # 获取所有可见函数
         # 使用函数描述组织上下文
         api_docs = reduce(lambda x, y: x + y,
-                          map(lambda a: f'- {a}\n > {ctx.load_function_doc(a).description}\n\n', apis))
-        prompt = modules_summarize_prompt.format(api_docs=api_docs)
+                          map(lambda a: f'- {a}\n > {ctx.load_function_doc(a).description}\n\n', apis))  # 构建函数列表文本
+        prompt = modules_summarize_prompt.format(api_docs=api_docs)  # 格式化提示模板
         # 生成模块文档
-        res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()
-        modules = ModuleDoc.from_doc(res)
+        res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt).ask()  # 调用LLM生成文档
+        modules = ModuleDoc.from_doc(res)  # 从结果解析模块文档
         # 保存模块文档初稿，若模块中只有一个函数，则舍弃
-        modules = list(filter(lambda x: len(modules) == 1 or len(x.functions) > 1, modules))
-        for m in modules:
-            ctx.save_doc(cls.get_draft_filename(ctx), m)
-        logger.info(f'[ModuleMetric] gen drafts for modules, modules count: {len(modules)}')
-        return modules
+        modules = list(filter(lambda x: len(modules) == 1 or len(x.functions) > 1, modules))  # 过滤掉只有一个函数的模块
+        for m in modules:  # 遍历模块
+            ctx.save_doc(cls.get_draft_filename(ctx), m)  # 保存模块草稿
+        logger.info(f'[ModuleMetric] gen drafts for modules, modules count: {len(modules)}')  # 记录生成信息
+        return modules  # 返回生成的模块草稿
 
     @classmethod
     def _enhance(cls, ctx, drafts: List[ModuleDoc]):
-        existed_modules_doc = ctx.load_module_docs()
-        if len(existed_modules_doc):
-            logger.info(f'[ModuleMetric] load docs, modules count: {len(existed_modules_doc)}')
-            return
+        """
+        增强模块文档，为草稿添加用例并优化
+        
+        Args:
+            ctx: 评估上下文对象
+            drafts: 模块文档草稿列表
+        """
+        existed_modules_doc = ctx.load_module_docs()  # 尝试加载已有的模块文档
+        if len(existed_modules_doc):  # 如果已有模块文档
+            logger.info(f'[ModuleMetric] load docs, modules count: {len(existed_modules_doc)}')  # 记录加载信息
+            return  # 直接返回，不进行增强
 
         # 优化模块文档
         def gen(i: int, m: ModuleDoc):
+            """
+            为单个模块生成增强文档的内部函数
+            
+            Args:
+                i: 模块索引
+                m: 模块文档草稿
+            """
             # 使用完整函数文档组织上下文
-            functions_doc = []
-            for f in m.functions:
+            functions_doc = []  # 初始化函数文档列表
+            for f in m.functions:  # 遍历模块中的函数
                 try:
-                    functions_doc.append(ctx.load_function_doc(f).markdown())
-                except KeyError:
-                    logger.warning(f'[ModuleMetric] function doc not found: {f}')
-            functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')
+                    functions_doc.append(ctx.load_function_doc(f).markdown())  # 加载函数文档
+                except KeyError:  # 如果函数文档不存在
+                    logger.warning(f'[ModuleMetric] function doc not found: {f}')  # 记录警告
+            functions_doc = prefix_with('\n---\n'.join(functions_doc), '> ')  # 合并函数文档并添加前缀
             # 使用原模块文档组织上下文
-            module_doc = prefix_with(m.markdown(), '> ')
-            prompt2 = modules_enhance_prompt.format(module_doc=module_doc, functions_doc=functions_doc, lang=ctx.lang.markdown)
+            module_doc = prefix_with(m.markdown(), '> ')  # 为模块文档添加前缀
+            prompt2 = modules_enhance_prompt.format(module_doc=module_doc, functions_doc=functions_doc, lang=ctx.lang.markdown)  # 格式化提示模板
             # 生成模块文档
-            res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()
-            doc = ModuleDoc.from_chapter(res)
+            res = SimpleLLM(ChatCompletionSettings()).add_user_msg(prompt2).ask()  # 调用LLM生成增强文档
+            doc = ModuleDoc.from_chapter(res)  # 从结果解析模块文档
             # 保存模块文档
-            ctx.save_module_doc(doc)
-            logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(drafts)}: {m.name}')
+            ctx.save_module_doc(doc)  # 保存增强后的模块文档
+            logger.info(f'[ModuleMetric] gen doc for module {i + 1}/{len(drafts)}: {m.name}')  # 记录生成信息
 
-        TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=args), enumerate(drafts)))).run()
+        TaskDispatcher(llm_thread_pool).adds(list(map(lambda args: Task(f=gen, args=args), enumerate(drafts)))).run()  # 使用任务分发器并行处理所有模块
 
     @classmethod
     def _check(cls, ctx: EvaContext) -> bool:
-        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))
-        if len(apis) == 0:
-            logger.warning(f'[ModuleMetric] no apis found, cannot generate modules docs')
-            return False
-        logger.info(f'[ModuleMetric] apis count: {len(apis)}')
-        return True
+        """
+        检查是否有足够的API函数用于生成模块文档
+        
+        Args:
+            ctx: 评估上下文对象
+            
+        Returns:
+            是否有足够的API函数
+        """
+        apis: List[str] = list(map(lambda x: x.symbol, filter(lambda x: x.visible, ctx.func_iter())))  # 获取所有可见函数
+        if len(apis) == 0:  # 如果没有API函数
+            logger.warning(f'[ModuleMetric] no apis found, cannot generate modules docs')  # 记录警告
+            return False  # 返回False
+        logger.info(f'[ModuleMetric] apis count: {len(apis)}')  # 记录API数量
+        return True  # 返回True
 
     def eva(self, ctx):
-        if not self._check(ctx):
-            return
-        drafts = self._draft(ctx)
-        self._enhance(ctx, drafts)
+        """
+        评估方法，为所有模块生成文档
+        
+        Args:
+            ctx: 评估上下文对象
+        """
+        if not self._check(ctx):  # 如果检查不通过
+            return  # 直接返回
+        drafts = self._draft(ctx)  # 生成模块草稿
+        self._enhance(ctx, drafts)  # 增强模块文档
